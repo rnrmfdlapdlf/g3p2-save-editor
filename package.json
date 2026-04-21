@@ -1,0 +1,30 @@
+{
+  "name": "g3p2-save-editor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Save editor for The War of Genesis III Part 2.",
+  "main": "dist/main/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build:main && concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "build:main": "tsc -p tsconfig.node.json",
+    "build": "npm run build:main && tsc -p tsconfig.json && vite build",
+    "start": "electron .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^41.2.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2"
+  }
+}
