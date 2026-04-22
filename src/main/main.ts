@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
 import { rename, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,11 +12,11 @@ let mainWindow: BrowserWindow | null = null;
 
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
-    width: 1120,
+    width: 1440,
     height: 760,
-    minWidth: 900,
+    minWidth: 1180,
     minHeight: 620,
-    backgroundColor: "#f7f4ee",
+    backgroundColor: "#f7f9fa",
     title: "G3P2 Save Editor",
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
@@ -31,6 +31,8 @@ async function createWindow(): Promise<void> {
   } else {
     await mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
+
+  createAppMenu();
 }
 
 app.whenReady().then(createWindow);
@@ -46,6 +48,35 @@ app.on("activate", () => {
     void createWindow();
   }
 });
+
+function createAppMenu(): void {
+  const fileMenu = Menu.buildFromTemplate([
+    {
+      label: "파일",
+      submenu: [
+        {
+          label: "불러오기",
+          accelerator: "CmdOrCtrl+O",
+          click: () => mainWindow?.webContents.send("menu:openSave")
+        },
+        {
+          label: "저장",
+          accelerator: "CmdOrCtrl+S",
+          click: () => mainWindow?.webContents.send("menu:save")
+        },
+        { type: "separator" },
+        {
+          label: "종료",
+          role: "quit"
+        }
+      ]
+    }
+  ]);
+  const defaultMenu = Menu.getApplicationMenu() ?? Menu.buildFromTemplate([]);
+  const preservedItems = defaultMenu.items.slice(1).map((item) => item);
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate([...fileMenu.items, ...preservedItems]));
+}
 
 ipcMain.handle("save:open", async () => {
   const options = {
@@ -91,7 +122,10 @@ ipcMain.handle(
     }
 
     await writeFile(targetPath, data);
-    return parseSave(data, targetPath);
+    return {
+      save: parseSave(data, targetPath),
+      backupPath
+    };
   }
 );
 
