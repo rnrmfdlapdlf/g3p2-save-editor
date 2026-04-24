@@ -4,6 +4,7 @@ import {
   CharacterEquipmentEdit,
   CharacterEquipmentInfo,
   CharacterMercenaryInfo,
+  CharacterMercenaryEdit,
   CHARACTER_NAMES,
   CHARACTER_OPTIONS,
   CONSUMABLE_KIND_LABELS,
@@ -41,17 +42,16 @@ type DraftMoney = Record<EpisodeKey, string>;
 type DraftInventorySlot = { itemCode: number; quantity: string };
 type DraftInventory = Record<EpisodeKey, DraftInventorySlot[]>;
 type DraftEquipment = Record<EquipmentScope, Record<number, Record<EquipmentSlotKey, number>>>;
-type DraftMercenaries = Record<number, number>;
-type EditorTab = EquipmentScope | "mercenary";
+type DraftMercenaries = Record<EquipmentScope, Record<number, number>>;
+type EditorTab = EquipmentScope;
 type LoadedSave = {
   save: SaveInfo;
   browserBytes?: Uint8Array | null;
 };
 
 const editorTabLabels: Record<EditorTab, string> = {
-  mercenary: "용병단",
-  field: "챕터 장비",
-  battle: "전투 장비"
+  field: "챕터 데이터",
+  battle: "전투 데이터"
 };
 
 const emptySaveStatus = "G3P_II*.sav 파일을 열거나 여기로 드래그하세요.";
@@ -67,9 +67,9 @@ export default function App() {
   });
   const [draftParties, setDraftParties] = useState<DraftParties>({ episode4: [], episode5: [] });
   const [draftEquipment, setDraftEquipment] = useState<DraftEquipment>({ field: {}, battle: {} });
-  const [draftMercenaries, setDraftMercenaries] = useState<DraftMercenaries>({});
+  const [draftMercenaries, setDraftMercenaries] = useState<DraftMercenaries>({ field: {}, battle: {} });
   const [selectedEquipmentCode, setSelectedEquipmentCode] = useState<number | null>(null);
-  const [activeEditorTab, setActiveEditorTab] = useState<EditorTab>("mercenary");
+  const [activeEditorTab, setActiveEditorTab] = useState<EditorTab>("field");
   const [status, setStatus] = useState(emptySaveStatus);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -140,19 +140,16 @@ export default function App() {
       field: buildEquipmentDrafts(nextSave.equipment.field),
       battle: buildEquipmentDrafts(nextSave.equipment.battle)
     });
-    setDraftMercenaries(
-      Object.fromEntries(
-        nextSave.mercenaries
-          .filter((mercenary) => mercenary.supported && typeof mercenary.value === "number")
-          .map((mercenary) => [mercenary.characterCode, mercenary.value ?? 0])
-      ) as DraftMercenaries
-    );
+    setDraftMercenaries({
+      field: buildMercenaryDrafts(nextSave.mercenaries.field),
+      battle: buildMercenaryDrafts(nextSave.mercenaries.battle)
+    });
     setSelectedEquipmentCode(
       nextSave.equipment.field.find((equipment) => equipment.supported)?.characterCode ??
-        nextSave.mercenaries.find((mercenary) => mercenary.supported)?.characterCode ??
+        nextSave.mercenaries.field.find((mercenary) => mercenary.supported)?.characterCode ??
         null
     );
-    setActiveEditorTab((currentTab) => (currentTab === "battle" && nextSave.location.code !== 1 ? "mercenary" : currentTab));
+    setActiveEditorTab((currentTab) => (currentTab === "battle" && nextSave.location.code !== 1 ? "field" : currentTab));
   }
 
   async function openSaveFromUser() {
@@ -451,7 +448,7 @@ export default function App() {
 
         <aside className="equipment-column">
           <div className="editor-tabs" role="tablist" aria-label="편집 항목 선택">
-            {(["mercenary", "field", "battle"] as EditorTab[]).map((tab) => (
+            {(["field", "battle"] as EditorTab[]).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -464,19 +461,22 @@ export default function App() {
             ))}
           </div>
 
-          {activeEditorTab === "mercenary" ? (
+          <div className="equipment-data-groups">
             <MercenaryEditor
               save={save}
+              scope={activeEditorTab}
               selectedCode={selectedEquipmentCode}
-              draftMercenaries={draftMercenaries}
+              draftMercenaries={draftMercenaries[activeEditorTab]}
               onChange={(characterCode, value) => {
                 setDraftMercenaries((current) => ({
                   ...current,
-                  [characterCode]: value
+                  [activeEditorTab]: {
+                    ...current[activeEditorTab],
+                    [characterCode]: value
+                  }
                 }));
               }}
             />
-          ) : (
             <EquipmentEditor
               save={save}
               scope={activeEditorTab}
@@ -495,7 +495,7 @@ export default function App() {
                 }));
               }}
             />
-          )}
+          </div>
         </aside>
       </section>
     </main>
@@ -643,7 +643,7 @@ function InventoryEditor({
         </div>
 
         <button type="button" className="inventory-review-button" onClick={() => setItemInfoOpen(true)}>
-          아이템 정보
+          전체 아이템 정보
         </button>
       </div>
 
@@ -981,12 +981,12 @@ function ItemInfoModal({ onClose }: { onClose: () => void }) {
         className="item-picker"
         role="dialog"
         aria-modal="true"
-        aria-label="아이템 정보"
+        aria-label="전체 아이템 정보"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="item-picker-header">
           <div>
-            <h2>아이템 정보</h2>
+            <h2>전체 아이템 정보</h2>
           </div>
           <button type="button" className="secondary-button" onClick={onClose}>
             닫기
@@ -1237,7 +1237,7 @@ function PartyPicker({
               <ManualCodeInput
                 value={manualCode}
                 ariaLabel="수동 캐릭터 코드"
-                helpText="목록에 없는 캐릭터 코드를 직접 입력합니다. 확인된 25개 필드 캐릭터 외에는 용병단과 챕터 장비를 편집할 수 없습니다."
+                helpText="목록에 없는 캐릭터 코드를 직접 입력합니다. 확인된 25개 필드 캐릭터 외에는 군단과 챕터 장비를 편집할 수 없습니다."
                 confirmMessage="255를 넘는 캐릭터 코드입니다. 그래도 추가할까요?"
                 onChange={setManualCode}
                 onAdd={addPartyCode}
@@ -1318,7 +1318,8 @@ function EquipmentEditor({
     <article className="equipment-card">
       <div className="section-title">
         <div>
-          <h2>{currentEquipment?.characterName ?? "캐릭터 선택"}</h2>
+          <h2>장비</h2>
+          <small>{currentEquipment?.characterName ?? "캐릭터 선택"}</small>
         </div>
       </div>
 
@@ -1329,8 +1330,8 @@ function EquipmentEditor({
           <div className="equipment-note">
             <small>
               {scope === "field"
-                ? "챕터/연대표 캐릭터 장비만 저장됩니다."
-                : "전투 중 현재 장비만 저장됩니다."}
+                ? "다음 전투시 착용하는 장비입니다."
+                : "현재 착용중인 장비입니다."}
             </small>
           </div>
 
@@ -1597,21 +1598,23 @@ function ManualCodeInput({
 
 function MercenaryEditor({
   save,
+  scope,
   selectedCode,
   draftMercenaries,
   onChange
 }: {
   save: SaveInfo | null;
+  scope: EquipmentScope;
   selectedCode: number | null;
-  draftMercenaries: DraftMercenaries;
+  draftMercenaries: Record<number, number>;
   onChange: (characterCode: number, value: number) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mercenaryByCode = useMemo(() => {
-    return new Map(save?.mercenaries.map((mercenary) => [mercenary.characterCode, mercenary]) ?? []);
-  }, [save]);
+    return new Map(save?.mercenaries[scope].map((mercenary) => [mercenary.characterCode, mercenary]) ?? []);
+  }, [save, scope]);
   const currentMercenary =
-    selectedCode === null ? null : mercenaryByCode.get(selectedCode) ?? buildUnsupportedMercenary(selectedCode);
+    selectedCode === null ? null : mercenaryByCode.get(selectedCode) ?? buildUnsupportedMercenary(selectedCode, scope);
   const value =
     selectedCode === null
       ? 0
@@ -1621,7 +1624,8 @@ function MercenaryEditor({
     <article className="equipment-card">
       <div className="section-title">
         <div>
-          <h2>{currentMercenary?.characterName ?? "캐릭터 선택"}</h2>
+          <h2>군단</h2>
+          <small>{currentMercenary?.characterName ?? "캐릭터 선택"}</small>
         </div>
       </div>
 
@@ -1630,11 +1634,11 @@ function MercenaryEditor({
       ) : currentMercenary.supported ? (
         <div className="equipment-slots">
           <div className="equipment-note">
-            <small>해당 캐릭터의 용병을 관리합니다.</small>
+            <small>{scope === "field" ? "챕터에서 사용할 군단을 관리합니다." : "현재 전투에서 사용할 군단을 관리합니다."}</small>
           </div>
 
           <div className="equipment-field">
-            <span>용병단</span>
+            <span>군단</span>
             <button type="button" className="mercenary-option active" onClick={() => setPickerOpen(true)}>
               <span>{getMercenaryName(value)}</span>
               <small>{value}</small>
@@ -1643,7 +1647,7 @@ function MercenaryEditor({
         </div>
       ) : (
         <div className="equipment-note unsupported">
-          <small>{currentMercenary.note ?? "이 캐릭터의 용병단 위치는 아직 확인되지 않았습니다."}</small>
+          <small>{currentMercenary.note ?? "이 캐릭터의 군단 위치는 아직 확인되지 않았습니다."}</small>
         </div>
       )}
 
@@ -1690,12 +1694,12 @@ function MercenaryPicker({
         className="item-picker"
         role="dialog"
         aria-modal="true"
-        aria-label="용병단 선택"
+        aria-label="군단 선택"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="item-picker-header">
           <div>
-            <h2>용병단 선택</h2>
+            <h2>군단 선택</h2>
           </div>
           <button type="button" className="secondary-button" onClick={onClose}>
             닫기
@@ -1725,9 +1729,9 @@ function MercenaryPicker({
             {activeTab === "manual" ? (
               <ManualCodeInput
                 value={manualCode}
-                ariaLabel="수동 용병단 코드"
-                helpText="목록에 없는 용병단 코드를 직접 입력합니다."
-                confirmMessage="255를 넘는 용병단 코드입니다. 그래도 추가할까요?"
+                ariaLabel="수동 군단 코드"
+                helpText="목록에 없는 군단 코드를 직접 입력합니다."
+                confirmMessage="255를 넘는 군단 코드입니다. 그래도 추가할까요?"
                 onChange={setManualCode}
                 onAdd={onSelect}
               />
@@ -1950,16 +1954,17 @@ function buildUnsupportedEquipment(characterCode: number, scope: EquipmentScope)
   };
 }
 
-function buildUnsupportedMercenary(characterCode: number): CharacterMercenaryInfo {
+function buildUnsupportedMercenary(characterCode: number, scope: EquipmentScope): CharacterMercenaryInfo {
   const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   return {
     characterCode,
     characterName,
+    scope,
     supported: false,
     note:
       getCharacterGroup(characterName) === "arena"
         ? "아레나 캐릭터의 정보는 세이브 파일에 기록되지 않습니다."
-        : "용병단 오프셋이 확인되지 않았습니다."
+        : "군단 오프셋이 확인되지 않았습니다."
   };
 }
 
@@ -1980,6 +1985,14 @@ function buildEquipmentDrafts(equipment: CharacterEquipmentInfo[]): Record<numbe
         Object.fromEntries(item.slots.map((slot) => [slot.key, slot.value]))
       ])
   ) as Record<number, Record<EquipmentSlotKey, number>>;
+}
+
+function buildMercenaryDrafts(mercenaries: CharacterMercenaryInfo[]): Record<number, number> {
+  return Object.fromEntries(
+    mercenaries
+      .filter((mercenary) => mercenary.supported && typeof mercenary.value === "number")
+      .map((mercenary) => [mercenary.characterCode, mercenary.value ?? 0])
+  ) as Record<number, number>;
 }
 
 function buildEquipmentEdits(
@@ -2003,15 +2016,18 @@ function buildEquipmentEdits(
 }
 
 function buildMercenaryEdits(
-  mercenaries: CharacterMercenaryInfo[],
+  mercenaries: SaveInfo["mercenaries"],
   draftMercenaries: DraftMercenaries
-): Array<{ characterCode: number; value: number }> {
-  return mercenaries
-    .filter((item) => item.supported && typeof draftMercenaries[item.characterCode] === "number")
-    .map((item) => ({
-      characterCode: item.characterCode,
-      value: draftMercenaries[item.characterCode]
-    }));
+): CharacterMercenaryEdit[] {
+  return (["field", "battle"] as EquipmentScope[]).flatMap((scope) =>
+    mercenaries[scope]
+      .filter((item) => item.supported && typeof draftMercenaries[scope][item.characterCode] === "number")
+      .map((item) => ({
+        characterCode: item.characterCode,
+        scope,
+        value: draftMercenaries[scope][item.characterCode]
+      }))
+  );
 }
 
 function buildInventoryDraft(inventory: InventorySlotInfo[]): DraftInventorySlot[] {

@@ -785,6 +785,15 @@ h1 {
   align-content: start;
 }
 
+.equipment-data-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.equipment-data-groups .equipment-card {
+  min-height: auto;
+}
+
 .sidebar .inventory-card {
   gap: 12px;
   padding: 22px;

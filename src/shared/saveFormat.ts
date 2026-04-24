@@ -136,6 +136,7 @@ export type CharacterEquipmentInfo = {
 export type CharacterMercenaryInfo = {
   characterCode: number;
   characterName: string;
+  scope: EquipmentScope;
   supported: boolean;
   note?: string;
   offset?: number;
@@ -172,7 +173,7 @@ export type SaveInfo = {
   inventorySlots: Record<EpisodeKey, InventorySlotInfo[]>;
   parties: Record<EpisodeKey, PartyInfo>;
   equipment: Record<EquipmentScope, CharacterEquipmentInfo[]>;
-  mercenaries: CharacterMercenaryInfo[];
+  mercenaries: Record<EquipmentScope, CharacterMercenaryInfo[]>;
 };
 
 export type CharacterEquipmentEdit = {
@@ -183,6 +184,7 @@ export type CharacterEquipmentEdit = {
 
 export type CharacterMercenaryEdit = {
   characterCode: number;
+  scope: EquipmentScope;
   value: number;
 };
 
@@ -558,6 +560,7 @@ const FIELD_CHARACTER_CODE_RELATIVE_OFFSET = 0x0a4;
 const FIELD_MERCENARY_RELATIVE_OFFSET = 0x0bc;
 const FIELD_EQUIPMENT_RELATIVE_OFFSET = 0x0ec;
 const EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER = 0x48;
+const BATTLE_MERCENARY_RELATIVE_OFFSET_FROM_CHARACTER = 0x18;
 const FIELD_CHARACTER_RECORD_INDICES: Record<number, number> = {
   236: 0,
   237: 1,
@@ -622,7 +625,10 @@ export function parseSave(data: Uint8Array, filePath: string): SaveInfo {
       field: readEquipment(data, "field"),
       battle: readEquipment(data, "battle")
     },
-    mercenaries: readMercenaries(data)
+    mercenaries: {
+      field: readMercenaries(data, "field"),
+      battle: readMercenaries(data, "battle")
+    }
   };
 }
 
@@ -1148,46 +1154,74 @@ function looksLikeEquipmentBlock(data: Uint8Array, offset: number): boolean {
   });
 }
 
-function readMercenaries(data: Uint8Array): CharacterMercenaryInfo[] {
-  return readFieldCharacterCodes(data).map((characterCode) => readCharacterMercenary(data, characterCode));
+function readMercenaries(data: Uint8Array, scope: EquipmentScope): CharacterMercenaryInfo[] {
+  if (scope === "field") {
+    return readFieldCharacterCodes(data).map((characterCode) => readCharacterMercenary(data, characterCode, scope));
+  }
+
+  const locationCode = readInverseUint32(data, 0x0c);
+  if (locationCode !== 1) {
+    return [];
+  }
+
+  const activeParty = readParty(data, getActiveEpisodeKey(data));
+  return activeParty.members.map((member) => readCharacterMercenary(data, member.code, scope));
 }
 
-function readCharacterMercenary(data: Uint8Array, characterCode: number): CharacterMercenaryInfo {
+function readCharacterMercenary(data: Uint8Array, characterCode: number, scope: EquipmentScope): CharacterMercenaryInfo {
   const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
-  const offset = getMercenaryOffset(data, characterCode);
+  const offset = getMercenaryOffset(data, characterCode, scope);
+  const byteLength = scope === "field" ? 4 : 2;
 
-  if (offset === null || offset + 4 > data.length) {
+  if (offset === null || offset + byteLength > data.length) {
     return {
       characterCode,
       characterName,
+      scope,
       supported: false,
       note: isArenaCharacterName(characterName)
         ? "아레나 캐릭터의 정보는 세이브 파일에 기록되지 않습니다."
-        : "아직 용병단 위치가 확인되지 않은 캐릭터입니다."
+        : "아직 군단 위치가 확인되지 않은 캐릭터입니다."
     };
   }
 
   return {
     characterCode,
     characterName,
+    scope,
     supported: true,
     offset,
-    value: readInverseUint32(data, offset),
-    raw: readRawHex(data, offset, 4)
+    value: scope === "field" ? readInverseUint32(data, offset) : readInverseUint16(data, offset),
+    raw: readRawHex(data, offset, byteLength)
   };
 }
 
 function applyMercenaryEdits(data: Uint8Array, edits: CharacterMercenaryEdit[]): void {
   for (const edit of edits) {
-    const offset = getMercenaryOffset(data, edit.characterCode);
-    if (offset === null || offset + 4 > data.length) {
+    const offset = getMercenaryOffset(data, edit.characterCode, edit.scope);
+    const byteLength = edit.scope === "field" ? 4 : 2;
+    if (offset === null || offset + byteLength > data.length) {
       continue;
     }
-    writeInverseUint32(data, offset, edit.value);
+    if (edit.scope === "field") {
+      writeInverseUint32(data, offset, edit.value);
+    } else {
+      writeInverseUint16(data, offset, edit.value);
+    }
   }
 }
 
-function getMercenaryOffset(data: Uint8Array, characterCode: number): number | null {
+function getMercenaryOffset(data: Uint8Array, characterCode: number, scope: EquipmentScope): number | null {
+  if (scope === "battle") {
+    const equipmentOffset = getEquipmentBaseOffset(data, characterCode, "battle");
+    if (equipmentOffset === null) {
+      return null;
+    }
+    const mercenaryOffset =
+      equipmentOffset - EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER + BATTLE_MERCENARY_RELATIVE_OFFSET_FROM_CHARACTER;
+    return mercenaryOffset + 2 <= data.length ? mercenaryOffset : null;
+  }
+
   const recordBaseOffset = findFieldCharacterRecordBaseOffset(data, characterCode);
   if (recordBaseOffset === null) {
     return null;
