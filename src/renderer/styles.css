@@ -285,7 +285,7 @@ h1 {
 
 .editor-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0;
 }
 
@@ -821,6 +821,14 @@ h1 {
 .equipment-slots {
   display: grid;
   gap: 12px;
+}
+
+.equipment-detail-selects {
+  display: grid;
+  gap: 10px;
+  border-top: 1px dashed #d1d5db;
+  margin-top: 4px;
+  padding-top: 12px;
 }
 
 .equipment-note {

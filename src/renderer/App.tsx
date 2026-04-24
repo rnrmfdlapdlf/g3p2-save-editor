@@ -27,6 +27,9 @@ import {
   SaveEditRequest,
   PartyInfo,
   SaveInfo,
+  WEAPON_ATTACK_TYPE_OPTIONS,
+  WEAPON_PIC_OPTIONS,
+  WEAPON_TYPE_OPTIONS,
   WEAPON_KIND_LABELS,
   WeaponKind
 } from "../shared/saveFormat";
@@ -41,7 +44,12 @@ type DraftParties = Record<EpisodeKey, number[]>;
 type DraftMoney = Record<EpisodeKey, string>;
 type DraftInventorySlot = { itemCode: number; quantity: string };
 type DraftInventory = Record<EpisodeKey, DraftInventorySlot[]>;
-type DraftEquipment = Record<EquipmentScope, Record<number, Record<EquipmentSlotKey, number>>>;
+type DraftEquipmentEntry = Record<EquipmentSlotKey, number> & {
+  weaponAttackType?: number;
+  weaponPicType?: number;
+  weaponType?: number;
+};
+type DraftEquipment = Record<EquipmentScope, Record<number, DraftEquipmentEntry>>;
 type DraftMercenaries = Record<EquipmentScope, Record<number, number>>;
 type EditorTab = EquipmentScope;
 type LoadedSave = {
@@ -149,7 +157,7 @@ export default function App() {
         nextSave.mercenaries.field.find((mercenary) => mercenary.supported)?.characterCode ??
         null
     );
-    setActiveEditorTab((currentTab) => (currentTab === "battle" && nextSave.location.code !== 1 ? "field" : currentTab));
+    setActiveEditorTab((currentTab) => (currentTab === "battle" && nextSave.type.code !== 1 ? "field" : currentTab));
   }
 
   async function openSaveFromUser() {
@@ -453,7 +461,7 @@ export default function App() {
                 key={tab}
                 type="button"
                 className={activeEditorTab === tab ? "active" : ""}
-                disabled={tab === "battle" && save?.location.code !== 1}
+                disabled={tab === "battle" && save?.type.code !== 1}
                 onClick={() => setActiveEditorTab(tab)}
               >
                 {editorTabLabels[tab]}
@@ -461,22 +469,41 @@ export default function App() {
             ))}
           </div>
 
-          <div className="equipment-data-groups">
+          <div className="equipment-card">
+            <div className="section-title">
+              <div>
+                <h2>캐릭터 정보</h2>
+              </div>
+            </div>
+
+            <div className="equipment-slots">
+              <div className="inventory-section-heading">
+                <span>군단</span>
+              </div>
+            </div>
+
             <MercenaryEditor
-              save={save}
-              scope={activeEditorTab}
-              selectedCode={selectedEquipmentCode}
-              draftMercenaries={draftMercenaries[activeEditorTab]}
-              onChange={(characterCode, value) => {
-                setDraftMercenaries((current) => ({
-                  ...current,
-                  [activeEditorTab]: {
-                    ...current[activeEditorTab],
-                    [characterCode]: value
-                  }
-                }));
-              }}
+                save={save}
+                scope={activeEditorTab}
+                selectedCode={selectedEquipmentCode}
+                draftMercenaries={draftMercenaries[activeEditorTab]}
+                onChange={(characterCode, value) => {
+                  setDraftMercenaries((current) => ({
+                    ...current,
+                    [activeEditorTab]: {
+                      ...current[activeEditorTab],
+                      [characterCode]: value
+                    }
+                  }));
+                }}
             />
+
+            <div className="equipment-slots">
+              <div className="inventory-section-heading">
+                <span>장비</span>
+              </div>
+            </div>
+
             <EquipmentEditor
               save={save}
               scope={activeEditorTab}
@@ -490,7 +517,19 @@ export default function App() {
                     [characterCode]: {
                       ...(current[activeEditorTab][characterCode] ?? {}),
                       [slot]: value
-                    } as Record<EquipmentSlotKey, number>
+                    } as DraftEquipmentEntry
+                  }
+                }));
+              }}
+              onWeaponDetailChange={(characterCode, key, value) => {
+                setDraftEquipment((current) => ({
+                  ...current,
+                  [activeEditorTab]: {
+                    ...current[activeEditorTab],
+                    [characterCode]: {
+                      ...(current[activeEditorTab][characterCode] ?? {}),
+                      [key]: value
+                    } as DraftEquipmentEntry
                   }
                 }));
               }}
@@ -507,7 +546,7 @@ function SaveMetaPanel({ save }: { save: SaveInfo | null }) {
     return (
       <div className="topbar-meta">
         <div>
-          <span className="eyebrow">세이브 위치</span>
+          <span className="eyebrow">세이브 타입</span>
           <strong>N/A</strong>
         </div>
         <div>
@@ -525,8 +564,8 @@ function SaveMetaPanel({ save }: { save: SaveInfo | null }) {
   return (
     <div className="topbar-meta">
       <div>
-        <span className="eyebrow">세이브 위치</span>
-        <strong>{save.location.label}</strong>
+        <span className="eyebrow">세이브 타입</span>
+        <strong>{save.type.label}</strong>
       </div>
       <div>
         <span className="eyebrow">현재 에피소드</span>
@@ -1237,7 +1276,7 @@ function PartyPicker({
               <ManualCodeInput
                 value={manualCode}
                 ariaLabel="수동 캐릭터 코드"
-                helpText="목록에 없는 캐릭터 코드를 직접 입력합니다. 확인된 25개 필드 캐릭터 외에는 군단과 챕터 장비를 편집할 수 없습니다."
+                helpText="목록에 없는 캐릭터 코드를 직접 입력합니다. 확인된 25개 필드 캐릭터 외에는 용병단과 챕터 장비를 편집할 수 없습니다."
                 confirmMessage="255를 넘는 캐릭터 코드입니다. 그래도 추가할까요?"
                 onChange={setManualCode}
                 onAdd={addPartyCode}
@@ -1296,13 +1335,19 @@ function EquipmentEditor({
   scope,
   selectedCode,
   draftEquipment,
-  onChange
+  onChange,
+  onWeaponDetailChange
 }: {
   save: SaveInfo | null;
   scope: EquipmentScope;
   selectedCode: number | null;
-  draftEquipment: Record<number, Record<EquipmentSlotKey, number>>;
+  draftEquipment: Record<number, DraftEquipmentEntry>;
   onChange: (characterCode: number, slot: EquipmentSlotKey, value: number) => void;
+  onWeaponDetailChange: (
+    characterCode: number,
+    key: "weaponAttackType" | "weaponPicType" | "weaponType",
+    value: number
+  ) => void;
 }) {
   const [pickerSlot, setPickerSlot] = useState<EquipmentSlotKey | null>(null);
   const equipmentByCode = useMemo(() => {
@@ -1315,26 +1360,11 @@ function EquipmentEditor({
       : draftEquipment[selectedCode] ?? buildEquipmentDraft(equipmentByCode.get(selectedCode));
 
   return (
-    <article className="equipment-card">
-      <div className="section-title">
-        <div>
-          <h2>장비</h2>
-          <small>{currentEquipment?.characterName ?? "캐릭터 선택"}</small>
-        </div>
-      </div>
-
+    <article className="">
       {!currentEquipment ? (
         <p className="empty">왼쪽 파티 목록에서 캐릭터를 선택하세요.</p>
       ) : currentEquipment.supported && selectedDraft ? (
         <div className="equipment-slots">
-          <div className="equipment-note">
-            <small>
-              {scope === "field"
-                ? "다음 전투시 착용하는 장비입니다."
-                : "현재 착용중인 장비입니다."}
-            </small>
-          </div>
-
           {EQUIPMENT_SLOT_DEFINITIONS.map((slot) => {
             const slotInfo = currentEquipment.slots.find((item) => item.key === slot.key);
             const value = selectedDraft[slot.key] ?? slotInfo?.value ?? 0;
@@ -1345,7 +1375,6 @@ function EquipmentEditor({
             const selectedStats = value === 0 ? undefined : isUnknownEquipment ? `code ${value}` : getItemStatText(selectedName);
             return (
               <div key={slot.key} className="equipment-entry">
-                <small className="equipment-slot-label">{slot.label}</small>
                 <div className="equipment-row">
                   <ItemIcon
                     item={
@@ -1367,6 +1396,62 @@ function EquipmentEditor({
               </div>
             );
           })}
+          <div className="equipment-detail-selects">
+            <label className="equipment-field">
+              <span>무기 공격 타입</span>
+              <select
+                value={selectedDraft.weaponAttackType ?? currentEquipment.weaponAttackType?.value ?? 0}
+                onChange={(event) =>
+                  onWeaponDetailChange(currentEquipment.characterCode, "weaponAttackType", Number(event.target.value))
+                }
+              >
+                {getWeaponDetailOptions(
+                  WEAPON_ATTACK_TYPE_OPTIONS,
+                  selectedDraft.weaponAttackType ?? currentEquipment.weaponAttackType?.value ?? 0
+                ).map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.code} - {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="equipment-field">
+              <span>무기 타입</span>
+              <select
+                value={selectedDraft.weaponType ?? currentEquipment.weaponType?.value ?? 0}
+                onChange={(event) =>
+                  onWeaponDetailChange(currentEquipment.characterCode, "weaponType", Number(event.target.value))
+                }
+              >
+                {getWeaponDetailOptions(
+                  WEAPON_TYPE_OPTIONS,
+                  selectedDraft.weaponType ?? currentEquipment.weaponType?.value ?? 0
+                ).map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.code} - {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>            
+            <label className="equipment-field">
+              <span>무기 그림 타입</span>
+              <select
+                value={selectedDraft.weaponPicType ?? currentEquipment.weaponPicType?.value ?? 0}
+                onChange={(event) =>
+                  onWeaponDetailChange(currentEquipment.characterCode, "weaponPicType", Number(event.target.value))
+                }
+              >
+                {getWeaponDetailOptions(
+                  WEAPON_PIC_OPTIONS,
+                  selectedDraft.weaponPicType ?? currentEquipment.weaponPicType?.value ?? 0
+                ).map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.code} - {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       ) : (
         <div className="equipment-note unsupported">
@@ -1621,24 +1706,13 @@ function MercenaryEditor({
       : draftMercenaries[selectedCode] ?? currentMercenary?.value ?? 0;
 
   return (
-    <article className="equipment-card">
-      <div className="section-title">
-        <div>
-          <h2>군단</h2>
-          <small>{currentMercenary?.characterName ?? "캐릭터 선택"}</small>
-        </div>
-      </div>
+    <article className="">
 
       {!currentMercenary ? (
         <p className="empty">왼쪽 파티 목록에서 캐릭터를 선택하세요.</p>
       ) : currentMercenary.supported ? (
         <div className="equipment-slots">
-          <div className="equipment-note">
-            <small>{scope === "field" ? "챕터에서 사용할 군단을 관리합니다." : "현재 전투에서 사용할 군단을 관리합니다."}</small>
-          </div>
-
           <div className="equipment-field">
-            <span>군단</span>
             <button type="button" className="mercenary-option active" onClick={() => setPickerOpen(true)}>
               <span>{getMercenaryName(value)}</span>
               <small>{value}</small>
@@ -1968,23 +2042,33 @@ function buildUnsupportedMercenary(characterCode: number, scope: EquipmentScope)
   };
 }
 
-function buildEquipmentDraft(equipment?: CharacterEquipmentInfo): Record<EquipmentSlotKey, number> | null {
+function buildEquipmentDraft(equipment?: CharacterEquipmentInfo): DraftEquipmentEntry | null {
   if (!equipment?.supported) {
     return null;
   }
 
-  return Object.fromEntries(equipment.slots.map((slot) => [slot.key, slot.value])) as Record<EquipmentSlotKey, number>;
+  return {
+    ...(Object.fromEntries(equipment.slots.map((slot) => [slot.key, slot.value])) as Record<EquipmentSlotKey, number>),
+    weaponAttackType: equipment.weaponAttackType?.value,
+    weaponPicType: equipment.weaponPicType?.value,
+    weaponType: equipment.weaponType?.value
+  };
 }
 
-function buildEquipmentDrafts(equipment: CharacterEquipmentInfo[]): Record<number, Record<EquipmentSlotKey, number>> {
+function buildEquipmentDrafts(equipment: CharacterEquipmentInfo[]): Record<number, DraftEquipmentEntry> {
   return Object.fromEntries(
     equipment
       .filter((item) => item.supported)
       .map((item) => [
         item.characterCode,
-        Object.fromEntries(item.slots.map((slot) => [slot.key, slot.value]))
+        {
+          ...(Object.fromEntries(item.slots.map((slot) => [slot.key, slot.value])) as Record<EquipmentSlotKey, number>),
+          weaponAttackType: item.weaponAttackType?.value,
+          weaponPicType: item.weaponPicType?.value,
+          weaponType: item.weaponType?.value
+        }
       ])
-  ) as Record<number, Record<EquipmentSlotKey, number>>;
+  ) as Record<number, DraftEquipmentEntry>;
 }
 
 function buildMercenaryDrafts(mercenaries: CharacterMercenaryInfo[]): Record<number, number> {
@@ -2005,6 +2089,12 @@ function buildEquipmentEdits(
       .map((item) => ({
         characterCode: item.characterCode,
         scope,
+        weaponAttackType:
+          draftEquipment[scope][item.characterCode].weaponAttackType ?? item.weaponAttackType?.value ?? 0,
+        weaponPicType:
+          draftEquipment[scope][item.characterCode].weaponPicType ?? item.weaponPicType?.value ?? 0,
+        weaponType:
+          draftEquipment[scope][item.characterCode].weaponType ?? item.weaponType?.value ?? 0,
         slots: Object.fromEntries(
           EQUIPMENT_SLOT_DEFINITIONS.map((slot) => [
             slot.key,
@@ -2013,6 +2103,16 @@ function buildEquipmentEdits(
         ) as Record<EquipmentSlotKey, number>
       }))
   );
+}
+
+function getWeaponDetailOptions(
+  options: Array<{ code: number; name: string }>,
+  currentValue: number
+): Array<{ code: number; name: string }> {
+  if (options.some((option) => option.code === currentValue)) {
+    return options;
+  }
+  return [{ code: currentValue, name: "현재 저장값" }, ...options];
 }
 
 function buildMercenaryEdits(

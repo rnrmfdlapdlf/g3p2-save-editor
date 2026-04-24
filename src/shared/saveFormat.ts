@@ -59,6 +59,7 @@ export type WeaponKind =
   | "claw"
   | "bottle"
   | "yoyo"
+  | "asura"
   | "unknown";
 export type ConsumableKind = "potion" | "first-aid" | "poison" | "bomb";
 
@@ -74,6 +75,7 @@ export const WEAPON_KIND_LABELS: Record<WeaponKind, string> = {
   claw: "크로",
   bottle: "술병",
   yoyo: "요요",
+  asura: "아수라",
   unknown: "미분류"
 };
 
@@ -124,12 +126,21 @@ export type EquipmentSlotInfo = {
   raw: string;
 };
 
+export type CharacterWeaponDetailInfo = {
+  offset: number;
+  value: number;
+  raw: string;
+};
+
 export type CharacterEquipmentInfo = {
   characterCode: number;
   characterName: string;
   scope: EquipmentScope;
   supported: boolean;
   note?: string;
+  weaponAttackType?: CharacterWeaponDetailInfo;
+  weaponPicType?: CharacterWeaponDetailInfo;
+  weaponType?: CharacterWeaponDetailInfo;
   slots: EquipmentSlotInfo[];
 };
 
@@ -144,7 +155,7 @@ export type CharacterMercenaryInfo = {
   raw?: string;
 };
 
-export type SaveLocationLabel = "연대표" | "챕터" | "전투" | "알 수 없음";
+export type SaveTypeLabel = "연대표" | "챕터" | "전투" | "알 수 없음";
 export type SaveEpisodeLabel = "미선택" | "에피소드4" | "에피소드5";
 
 export type SaveInfo = {
@@ -155,9 +166,9 @@ export type SaveInfo = {
     milliseconds: number;
     display: string;
   };
-  location: {
+  type: {
     code: number;
-    label: SaveLocationLabel;
+    label: SaveTypeLabel;
     sceneId: number;
   };
   episode: {
@@ -179,6 +190,9 @@ export type SaveInfo = {
 export type CharacterEquipmentEdit = {
   characterCode: number;
   scope: EquipmentScope;
+  weaponAttackType?: number;
+  weaponPicType?: number;
+  weaponType?: number;
   slots: Record<EquipmentSlotKey, number>;
 };
 
@@ -317,14 +331,62 @@ export const EQUIPMENT_SLOT_DEFINITIONS: Array<{ key: EquipmentSlotKey; label: s
   { key: "shoes", label: "신발", relativeOffset: 10 }
 ];
 
+export const WEAPON_PIC_OPTIONS: Array<{ code: number; name: string }> = [
+  { code: 0, name: "없음" },
+  { code: 40, name: "밍밍의 리본" },
+  { code: 41, name: "윙맨" },
+  { code: 42, name: "니카 AF - 1" },
+  { code: 43, name: "크로" },
+  { code: 44, name: "권총" },
+  { code: 45, name: "S&M 357" },
+  { code: 47, name: "크루세이더" },
+  { code: 48, name: "순백의 눈" },
+  { code: 49, name: "버스터 슬라이서" },
+  { code: 50, name: "코어 스틱" },
+  { code: 51, name: "크루세이더" },
+  { code: 52, name: "크로슬리 커스텀" },
+  { code: 53, name: "부스터" },
+  { code: 54, name: "아수라" },
+  { code: 55, name: "쿡 슬라이서3" },
+  { code: 56, name: "검" },
+  { code: 57, name: "대검" }
+];
+
+export const WEAPON_TYPE_OPTIONS: Array<{ code: number; name: string }> = [
+  { code: 0, name: "건 슬라이서" },
+  { code: 14, name: "검" },
+  { code: 12, name: "핸드건" },
+  { code: 1, name: "부스터" },
+  { code: 13, name: "시가" },
+  { code: 10, name: "카메라 렌즈" },
+  { code: 15, name: "대검" },
+  { code: 8, name: "리본" },
+  { code: 11, name: "크로" },
+  { code: 17, name: "술병" },
+  { code: 9, name: "요요" },
+  { code: 16, name: "아수라" },
+];
+
+export const WEAPON_ATTACK_TYPE_OPTIONS: Array<{ code: number; name: string }> = [
+  { code: 1, name: "근거리공격" },
+  { code: 6, name: "원거리공격" },
+  { code: 1479, name: "부스터" }
+];
+
 export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, EquipmentOption[]> = {
   weapon: [
     { code: 0, name: "없음" },
     { code: 1, name: "옐로 리본", weaponKind: "ribbon" },
+    { code: 2, name: "블루 리본", weaponKind: "ribbon" },
     { code: 3, name: "화이트 리본", weaponKind: "ribbon" },
     { code: 4, name: "레드 리본", weaponKind: "ribbon" },
+    { code: 5, name: "실버 리본", weaponKind: "ribbon" },
+    { code: 6, name: "골드 리본", weaponKind: "ribbon" },
+    { code: 7, name: "플라티늄 리본", weaponKind: "ribbon" },
     { code: 10, name: "베이직 휠", weaponKind: "yoyo" },
     { code: 11, name: "체리오트", weaponKind: "yoyo" },
+    { code: 12, name: "파이어 휠", weaponKind: "yoyo" },
+    { code: 13, name: "써니 휠", weaponKind: "yoyo" },
     { code: 15, name: "글래스 렌즈", weaponKind: "camera-lens" },
     { code: 16, name: "옵틱 써클", weaponKind: "camera-lens" },
     { code: 17, name: "프라임 렌즈", weaponKind: "camera-lens" },
@@ -340,8 +402,16 @@ export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, EquipmentOption[]> = {
     { code: 29, name: "트윈 블래스터", weaponKind: "handgun" },
     { code: 30, name: "리볼버 발렌타인", weaponKind: "handgun" },
     { code: 32, name: "마일드 스모크", weaponKind: "cigar" },
+    { code: 33, name: "쵸이스", weaponKind: "cigar" },
     { code: 34, name: "헤비 원", weaponKind: "cigar" },
+    { code: 35, name: "헤이즐 스모크", weaponKind: "cigar" },
     { code: 36, name: "체인지 스모커", weaponKind: "cigar" },
+    { code: 37, name: "후버의 자존심", weaponKind: "cigar" },
+    { code: 39, name: "B-포트", weaponKind: "bottle" },
+    { code: 40, name: "아이비 포트", weaponKind: "bottle" },
+    { code: 41, name: "스파이더 포트", weaponKind: "bottle" },
+    { code: 42, name: "스네이크 포트", weaponKind: "bottle" },
+    { code: 43, name: "해저드 포트", weaponKind: "bottle" },
     { code: 45, name: "블루", weaponKind: "booster" },
     { code: 46, name: "튜터", weaponKind: "booster" },
     { code: 47, name: "토르트", weaponKind: "booster" },
@@ -351,6 +421,7 @@ export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, EquipmentOption[]> = {
     { code: 51, name: "가리우스", weaponKind: "booster" },
     { code: 52, name: "G-써클렛", weaponKind: "booster" },
     { code: 53, name: "아이리스 써클렛", weaponKind: "booster" },
+    { code: 54, name: "천원", weaponKind: "booster" },
     { code: 56, name: "수련검", weaponKind: "sword" },
     { code: 57, name: "키퍼", weaponKind: "sword" },
     { code: 58, name: "블리츠", weaponKind: "sword" },
@@ -359,15 +430,29 @@ export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, EquipmentOption[]> = {
     { code: 61, name: "장검", weaponKind: "sword" },
     { code: 62, name: "씨즈", weaponKind: "sword" },
     { code: 64, name: "큐티 스톤", weaponKind: "greatsword" },
+    { code: 65, name: "라이언 하트", weaponKind: "greatsword" },
+    { code: 66, name: "소울 브레이커", weaponKind: "greatsword" },
+    { code: 67, name: "어비스 블랙", weaponKind: "greatsword" },
     { code: 129, name: "스페이스 리퍼", weaponKind: "gun-slicer" },
     { code: 130, name: "펠레의 빙검", weaponKind: "gun-slicer" },
+    { code: 131, name: "맘모스", weaponKind: "gun-slicer" },
+    { code: 132, name: "트윌라잇 크로스", weaponKind: "gun-slicer" },
     { code: 134, name: "크림슨 프리즘", weaponKind: "booster" },
     { code: 135, name: "바인드 프리즘", weaponKind: "booster" },
     { code: 136, name: "헬 프리즘", weaponKind: "booster" },
+    { code: 137, name: "멜리사의 해골", weaponKind: "booster" },
+    { code: 138, name: "악마의 문장", weaponKind: "booster" },
     { code: 140, name: "젤 샤프란", weaponKind: "ribbon" },
     { code: 142, name: "쥬다스 요요", weaponKind: "yoyo" },
+    { code: 144, name: "타이거 아이", weaponKind: "camera-lens" },
     { code: 146, name: "여인의 키스", weaponKind: "claw" },
+    { code: 148, name: "더 레이지", weaponKind: "handgun" },
     { code: 150, name: "군터의 팔", weaponKind: "cigar" },
+    { code: 152, name: "스노우 화이트", weaponKind: "bottle" },
+    { code: 154, name: "멸살지옥검", weaponKind: "sword" },
+    { code: 156, name: "발뭉", weaponKind: "greatsword" },
+    { code: 158, name: "일반검(더미)", weaponKind: "sword" },
+    { code: 159, name: "일반총(더미)", weaponKind: "handgun" },
     { code: 174, name: "인스트럭터", weaponKind: "gun-slicer" },
     { code: 178, name: "실버 EXP", weaponKind: "gun-slicer" },
     { code: 179, name: "실버 QUICK", weaponKind: "gun-slicer" },
@@ -383,7 +468,7 @@ export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, EquipmentOption[]> = {
     { code: 217, name: "시가 보르도", weaponKind: "cigar" },
     { code: 221, name: "드래곤 스네일", weaponKind: "sword" },
     { code: 226, name: "로프란트 글로리", weaponKind: "sword" },
-    { code: 154, name: "멸살지옥검", weaponKind: "sword" }
+    
   ],
   armor: [
     { code: 0, name: "없음" },
@@ -560,6 +645,9 @@ const FIELD_CHARACTER_CODE_RELATIVE_OFFSET = 0x0a4;
 const FIELD_MERCENARY_RELATIVE_OFFSET = 0x0bc;
 const FIELD_EQUIPMENT_RELATIVE_OFFSET = 0x0ec;
 const EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER = 0x48;
+const WEAPON_ATTACK_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x32;
+const WEAPON_PIC_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x04;
+const WEAPON_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x02;
 const BATTLE_MERCENARY_RELATIVE_OFFSET_FROM_CHARACTER = 0x18;
 const FIELD_CHARACTER_RECORD_INDICES: Record<number, number> = {
   236: 0,
@@ -601,7 +689,7 @@ export function parseSave(data: Uint8Array, filePath: string): SaveInfo {
     fileName,
     size: data.length,
     playTime: readPlayTime(data),
-    location: readSaveLocation(data),
+    type: readSaveType(data),
     episode: readSaveEpisode(data),
     checksum: {
       stored: storedChecksum,
@@ -689,11 +777,11 @@ function formatPlayTime(milliseconds: number): string {
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
-function readSaveLocation(data: Uint8Array): SaveInfo["location"] {
+function readSaveType(data: Uint8Array): SaveInfo["type"] {
   const code = readInverseUint32(data, 0x0c);
   return {
     code,
-    label: getSaveLocationLabel(code),
+    label: getSaveTypeLabel(code),
     sceneId: readInverseUint32(data, 0x08)
   };
 }
@@ -720,7 +808,7 @@ function getActiveEpisodeKey(data: Uint8Array): EpisodeKey {
   return getSaveEpisodeLabel(data) === "에피소드5" ? "episode5" : "episode4";
 }
 
-function getSaveLocationLabel(code: number): SaveLocationLabel {
+function getSaveTypeLabel(code: number): SaveTypeLabel {
   if (code === 7) {
     return "연대표";
   }
@@ -1035,6 +1123,9 @@ function readCharacterEquipment(data: Uint8Array, characterCode: number, scope: 
     characterName,
     scope,
     supported: true,
+    weaponAttackType: readCharacterWeaponDetail(data, baseOffset + WEAPON_ATTACK_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT),
+    weaponPicType: readCharacterWeaponDetail(data, baseOffset + WEAPON_PIC_RELATIVE_OFFSET_FROM_EQUIPMENT),
+    weaponType: readCharacterWeaponDetail(data, baseOffset + WEAPON_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT),
     slots: EQUIPMENT_SLOT_DEFINITIONS.map((slot) => {
       const offset = baseOffset + slot.relativeOffset;
       return {
@@ -1055,10 +1146,32 @@ function applyEquipmentEdits(data: Uint8Array, edits: CharacterEquipmentEdit[]):
       continue;
     }
 
+    if (typeof edit.weaponAttackType === "number") {
+      writeInverseUint16(data, baseOffset + WEAPON_ATTACK_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.weaponAttackType);
+    }
+    if (typeof edit.weaponPicType === "number") {
+      writeInverseUint16(data, baseOffset + WEAPON_PIC_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.weaponPicType);
+    }
+    if (typeof edit.weaponType === "number") {
+      writeInverseUint16(data, baseOffset + WEAPON_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.weaponType);
+    }
+
     for (const slot of EQUIPMENT_SLOT_DEFINITIONS) {
       writeInverseUint16(data, baseOffset + slot.relativeOffset, edit.slots[slot.key] ?? 0);
     }
   }
+}
+
+function readCharacterWeaponDetail(data: Uint8Array, offset: number): CharacterWeaponDetailInfo | undefined {
+  if (offset < 0 || offset + 2 > data.length) {
+    return undefined;
+  }
+
+  return {
+    offset,
+    value: readInverseUint16(data, offset),
+    raw: readRawHex(data, offset, 2)
+  };
 }
 
 function getEquipmentBaseOffset(data: Uint8Array, characterCode: number, scope: EquipmentScope): number | null {
