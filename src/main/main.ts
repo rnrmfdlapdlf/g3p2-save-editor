@@ -12,9 +12,9 @@ let mainWindow: BrowserWindow | null = null;
 
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 760,
-    minWidth: 1180,
+    width: 1500,
+    height: 1060,
+    minWidth: 1500,
     minHeight: 620,
     backgroundColor: "#f7f9fa",
     title: "G3P2 Save Editor",

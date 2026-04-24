@@ -227,12 +227,14 @@ export const PARTY_OFFSETS: Record<EpisodeKey, { label: string; offset: number }
   episode4: { label: "영혼의 검", offset: 0x62f0 },
   episode5: { label: "뫼비우스의 우주", offset: 0x73a0 }
 };
+export const PARTY_MEMBER_LIMIT = 55;
 
 export const CHARACTER_NAMES = new Map<number, string>([
+  [36, "슈로 위장한 진"],
   [38, "레드헤드"],
-  [39, "알 수 없음 (39)"],
+  [39, "아레나 레빈(더미)"],
   [56, "아셀라스"],
-  [57, "젠"],
+  [57, "젠 (아슈레이)"],
   [64, "카를로스"],
   [71, "아레나 샤크바리"],
   [75, "아레나 살라딘"],
@@ -556,6 +558,33 @@ const FIELD_CHARACTER_CODE_RELATIVE_OFFSET = 0x0a4;
 const FIELD_MERCENARY_RELATIVE_OFFSET = 0x0bc;
 const FIELD_EQUIPMENT_RELATIVE_OFFSET = 0x0ec;
 const EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER = 0x48;
+const FIELD_CHARACTER_RECORD_INDICES: Record<number, number> = {
+  236: 0,
+  237: 1,
+  427: 2,
+  238: 3,
+  222: 4,
+  240: 5,
+  246: 6,
+  484: 7,
+  398: 8,
+  241: 9,
+  242: 10,
+  243: 11,
+  223: 12,
+  247: 13,
+  244: 14,
+  219: 15,
+  245: 16,
+  221: 17,
+  220: 18,
+  563: 19,
+  38: 20,
+  56: 21,
+  57: 22,
+  64: 23,
+  36: 24
+};
 
 const CHECKSUM_WEIGHTS = [3, 5, 7, 9] as const;
 
@@ -602,8 +631,8 @@ export function applyMoney(data: Uint8Array, episode: EpisodeKey, value: number)
 }
 
 export function applyParty(data: Uint8Array, episode: EpisodeKey, codes: number[]): void {
-  if (codes.length > 15) {
-    throw new Error("파티는 최대 15명까지 저장합니다.");
+  if (codes.length > PARTY_MEMBER_LIMIT) {
+    throw new Error(`파티는 최대 ${PARTY_MEMBER_LIMIT}명까지 저장합니다.`);
   }
 
   const target = PARTY_OFFSETS[episode];
@@ -613,7 +642,7 @@ export function applyParty(data: Uint8Array, episode: EpisodeKey, codes: number[
     writeInverseUint32(data, target.offset + 4 + index * 4, codes[index]);
   }
 
-  for (let index = codes.length; index < 15; index += 1) {
+  for (let index = codes.length; index < PARTY_MEMBER_LIMIT; index += 1) {
     writeInverseUint32(data, target.offset + 4 + index * 4, 0);
   }
 }
@@ -945,7 +974,7 @@ function updateInventoryCount(data: Uint8Array, episode: EpisodeKey, minimumCoun
 function readParty(data: Uint8Array, episode: EpisodeKey): PartyInfo {
   const target = PARTY_OFFSETS[episode];
   const count = readInverseUint32(data, target.offset);
-  const safeCount = Math.min(count, 30);
+  const safeCount = Math.min(count, PARTY_MEMBER_LIMIT);
   const members: PartyMember[] = [];
 
   for (let index = 0; index < safeCount; index += 1) {
@@ -1061,40 +1090,33 @@ function getFieldEquipmentBaseOffset(data: Uint8Array, characterCode: number): n
 }
 
 function findFieldCharacterRecordBaseOffset(data: Uint8Array, characterCode: number): number | null {
-  for (let index = 0; index < FIELD_CHARACTER_RECORD_COUNT; index += 1) {
-    const recordBaseOffset = FIELD_CHARACTER_RECORD_START_OFFSET + index * FIELD_CHARACTER_RECORD_STRIDE;
-    const codeOffset = recordBaseOffset + FIELD_CHARACTER_CODE_RELATIVE_OFFSET;
-    if (codeOffset + 2 > data.length) {
-      break;
-    }
-
-    if (readInverseUint16(data, codeOffset) === characterCode) {
-      return recordBaseOffset;
-    }
+  const index = FIELD_CHARACTER_RECORD_INDICES[characterCode];
+  if (typeof index !== "number") {
+    return null;
   }
 
-  return null;
+  const recordBaseOffset = FIELD_CHARACTER_RECORD_START_OFFSET + index * FIELD_CHARACTER_RECORD_STRIDE;
+  const codeOffset = recordBaseOffset + FIELD_CHARACTER_CODE_RELATIVE_OFFSET;
+  if (codeOffset + 2 > data.length || readInverseUint16(data, codeOffset) !== characterCode) {
+    return null;
+  }
+
+  return recordBaseOffset;
 }
 
 function readFieldCharacterCodes(data: Uint8Array): number[] {
-  const codes: number[] = [];
-  const seen = new Set<number>();
-
-  for (let index = 0; index < FIELD_CHARACTER_RECORD_COUNT; index += 1) {
-    const recordBaseOffset = FIELD_CHARACTER_RECORD_START_OFFSET + index * FIELD_CHARACTER_RECORD_STRIDE;
-    const codeOffset = recordBaseOffset + FIELD_CHARACTER_CODE_RELATIVE_OFFSET;
-    if (codeOffset + 2 > data.length) {
-      break;
-    }
-
-    const characterCode = readInverseUint16(data, codeOffset);
-    if (!seen.has(characterCode)) {
-      seen.add(characterCode);
-      codes.push(characterCode);
-    }
-  }
-
-  return codes;
+  return Object.entries(FIELD_CHARACTER_RECORD_INDICES)
+    .map(([characterCode, index]) => ({ characterCode: Number(characterCode), index }))
+    .sort((a, b) => a.index - b.index)
+    .filter(({ characterCode, index }) => {
+      if (index < 0 || index >= FIELD_CHARACTER_RECORD_COUNT) {
+        return false;
+      }
+      const recordBaseOffset = FIELD_CHARACTER_RECORD_START_OFFSET + index * FIELD_CHARACTER_RECORD_STRIDE;
+      const codeOffset = recordBaseOffset + FIELD_CHARACTER_CODE_RELATIVE_OFFSET;
+      return codeOffset + 2 <= data.length && readInverseUint16(data, codeOffset) === characterCode;
+    })
+    .map(({ characterCode }) => characterCode);
 }
 
 function findCharacterEquipmentBaseOffset(data: Uint8Array, characterCode: number, preferLast: boolean): number | null {

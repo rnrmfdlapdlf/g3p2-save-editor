@@ -1,5 +1,6 @@
 import React, { DragEvent, useEffect, useMemo, useState } from "react";
 import {
+  applySaveEdits,
   CharacterEquipmentEdit,
   CharacterEquipmentInfo,
   CharacterMercenaryInfo,
@@ -20,6 +21,9 @@ import {
   InventorySlotInfo,
   MERCENARY_OPTIONS,
   MoneyInfo,
+  PARTY_MEMBER_LIMIT,
+  parseSave,
+  SaveEditRequest,
   PartyInfo,
   SaveInfo,
   WEAPON_KIND_LABELS,
@@ -39,6 +43,10 @@ type DraftInventory = Record<EpisodeKey, DraftInventorySlot[]>;
 type DraftEquipment = Record<EquipmentScope, Record<number, Record<EquipmentSlotKey, number>>>;
 type DraftMercenaries = Record<number, number>;
 type EditorTab = EquipmentScope | "mercenary";
+type LoadedSave = {
+  save: SaveInfo;
+  browserBytes?: Uint8Array | null;
+};
 
 const editorTabLabels: Record<EditorTab, string> = {
   mercenary: "용병단",
@@ -46,10 +54,11 @@ const editorTabLabels: Record<EditorTab, string> = {
   battle: "전투 장비"
 };
 
-const emptySaveStatus = "G3P_II*.sav 파일을 여기로 드래그하세요.";
+const emptySaveStatus = "G3P_II*.sav 파일을 열거나 여기로 드래그하세요.";
 
 export default function App() {
   const [save, setSave] = useState<SaveInfo | null>(null);
+  const [browserSaveBytes, setBrowserSaveBytes] = useState<Uint8Array | null>(null);
   const [activeEpisode, setActiveEpisode] = useState<EpisodeKey>("episode4");
   const [draftMoney, setDraftMoney] = useState<DraftMoney>({ episode4: "", episode5: "" });
   const [draftInventory, setDraftInventory] = useState<DraftInventory>({
@@ -81,16 +90,23 @@ export default function App() {
       ),
     [draftInventory]
   );
-  const canWrite = Boolean(save && isValidMoney(activeMoneyNumber) && allInventoryNumbers.every(isValidCount));
+  const electronApi = window.g3p2SaveEditor;
+  const saveActionLabel = electronApi ? "저장" : "다운로드";
+  const canWrite = Boolean(
+    save &&
+      (electronApi || browserSaveBytes) &&
+      isValidMoney(activeMoneyNumber) &&
+      allInventoryNumbers.every(isValidCount)
+  );
 
-  async function loadSave(loader: () => Promise<SaveInfo | null>, cancelMessage: string) {
+  async function loadSave(loader: () => Promise<LoadedSave | null>, cancelMessage: string) {
     setBusy(true);
     setStatus("세이브 파일을 읽는 중입니다.");
     try {
-      const nextSave = await loader();
-      if (nextSave) {
-        adoptSave(nextSave);
-        setStatus(`${nextSave.fileName} 파일을 열었습니다.`);
+      const loadedSave = await loader();
+      if (loadedSave) {
+        adoptSave(loadedSave.save, loadedSave.browserBytes ?? null);
+        setStatus(`${loadedSave.save.fileName} 파일을 열었습니다.`);
       } else {
         setStatus(save ? cancelMessage : emptySaveStatus);
       }
@@ -102,8 +118,9 @@ export default function App() {
     }
   }
 
-  function adoptSave(nextSave: SaveInfo) {
+  function adoptSave(nextSave: SaveInfo, nextBrowserBytes: Uint8Array | null = null) {
     setSave(nextSave);
+    setBrowserSaveBytes(nextBrowserBytes);
     document.title = nextSave.fileName;
     setActiveEpisode(nextSave.episode.label === "에피소드5" ? "episode5" : "episode4");
     setDraftMoney({
@@ -138,6 +155,19 @@ export default function App() {
     setActiveEditorTab((currentTab) => (currentTab === "battle" && nextSave.location.code !== 1 ? "mercenary" : currentTab));
   }
 
+  async function openSaveFromUser() {
+    const api = window.g3p2SaveEditor;
+    if (api) {
+      await loadSave(async () => {
+        const nextSave = await api.openSave();
+        return nextSave ? { save: nextSave } : null;
+      }, "파일 선택이 취소되었습니다.");
+      return;
+    }
+
+    await loadSave(openBrowserSavePicker, "파일 선택이 취소되었습니다.");
+  }
+
   async function openDroppedSave(event: DragEvent<HTMLElement>) {
     event.preventDefault();
     const file = event.dataTransfer.files.item(0);
@@ -146,14 +176,20 @@ export default function App() {
       return;
     }
 
-    const filePath = window.g3p2SaveEditor.getPathForFile(file);
+    const api = window.g3p2SaveEditor;
+    const filePath = api?.getPathForFile(file) || file.name;
     if (!/\.sav(?:\.\d{14})?$/i.test(filePath)) {
       setStatus(".sav 또는 .sav.년월일시분초 파일만 열 수 있습니다.");
       setDragging(false);
       return;
     }
 
-    await loadSave(() => window.g3p2SaveEditor.openSavePath(filePath), "파일 선택이 취소되었습니다.");
+    if (api) {
+      await loadSave(async () => ({ save: await api.openSavePath(filePath) }), "파일 선택이 취소되었습니다.");
+      return;
+    }
+
+    await loadSave(() => readBrowserSaveFile(file), "파일 선택이 취소되었습니다.");
   }
 
   async function writeEditedOriginal() {
@@ -184,22 +220,38 @@ export default function App() {
       return;
     }
 
-    setBusy(true);
-    setStatus("기존 세이브를 백업하고 저장하는 중입니다.");
-    try {
-      const result = await window.g3p2SaveEditor.writeEditedOriginal({
-        filePath: save.filePath,
-        edits: {
-          money,
-          inventorySlots,
-          parties: draftParties,
-          equipment: buildEquipmentEdits(save.equipment, draftEquipment),
-          mercenaries: buildMercenaryEdits(save.mercenaries, draftMercenaries)
-        }
-      });
+    const edits: SaveEditRequest = {
+      money,
+      inventorySlots,
+      parties: draftParties,
+      equipment: buildEquipmentEdits(save.equipment, draftEquipment),
+      mercenaries: buildMercenaryEdits(save.mercenaries, draftMercenaries)
+    };
+    const api = window.g3p2SaveEditor;
+    if (!api && !browserSaveBytes) {
+      setStatus("다운로드할 원본 세이브 데이터가 없습니다. 파일을 다시 열어주세요.");
+      return;
+    }
 
-      adoptSave(result.save);
-      setStatus(`${result.save.fileName} 파일로 저장했습니다. 백업: ${getFileName(result.backupPath)}`);
+    setBusy(true);
+    setStatus(api ? "기존 세이브를 백업하고 저장하는 중입니다." : "수정된 세이브를 다운로드하는 중입니다.");
+    try {
+      if (api) {
+        const result = await api.writeEditedOriginal({
+          filePath: save.filePath,
+          edits
+        });
+
+        adoptSave(result.save);
+        setStatus(`${result.save.fileName} 파일로 저장했습니다. 백업: ${getFileName(result.backupPath)}`);
+      } else if (browserSaveBytes) {
+        const nextData = new Uint8Array(browserSaveBytes);
+        const downloadFileName = getDownloadFileName(save.fileName);
+        applySaveEdits(nextData, edits);
+        downloadSaveFile(nextData, downloadFileName);
+        adoptSave(parseSave(nextData, downloadFileName), nextData);
+        setStatus(`${downloadFileName} 파일을 다운로드했습니다.`);
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "저장하지 못했습니다.");
     } finally {
@@ -247,8 +299,8 @@ export default function App() {
   function addPartyMember(code: number) {
     setDraftParties((current) => {
       const party = current[activeEpisode];
-      if (party.length >= 15) {
-        setStatus("파티는 최대 15명까지 저장합니다.");
+      if (party.length >= PARTY_MEMBER_LIMIT) {
+        setStatus(`파티는 최대 ${PARTY_MEMBER_LIMIT}명까지 저장합니다.`);
         return current;
       }
       if (party.includes(code)) {
@@ -289,10 +341,18 @@ export default function App() {
   }
 
   useEffect(() => {
-    const removeOpenListener = window.g3p2SaveEditor.onOpenSaveRequest(() => {
-      void loadSave(() => window.g3p2SaveEditor.openSave(), "파일 선택이 취소되었습니다.");
+    const api = window.g3p2SaveEditor;
+    if (!api) {
+      return;
+    }
+
+    const removeOpenListener = api.onOpenSaveRequest(() => {
+      void loadSave(async () => {
+        const nextSave = await api.openSave();
+        return nextSave ? { save: nextSave } : null;
+      }, "파일 선택이 취소되었습니다.");
     });
-    const removeSaveListener = window.g3p2SaveEditor.onSaveRequest(() => {
+    const removeSaveListener = api.onSaveRequest(() => {
       void writeEditedOriginal();
     });
 
@@ -303,21 +363,35 @@ export default function App() {
   });
 
   return (
-    <main className="app-shell">
-      <header
-        className={dragging ? "topbar drop-active" : "topbar"}
-        onDragEnter={(event) => {
+    <main
+      className="app-shell"
+      onDragEnter={(event) => {
+        if (isFileDrag(event)) {
           event.preventDefault();
           setDragging(true);
-        }}
-        onDragOver={(event) => event.preventDefault()}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setDragging(false);
-          }
-        }}
-        onDrop={openDroppedSave}
-      >
+        }
+      }}
+      onDragOver={(event) => {
+        if (isFileDrag(event)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          setDragging(true);
+        }
+      }}
+      onDragLeave={(event) => {
+        if (isLeavingViewport(event)) {
+          setDragging(false);
+        }
+      }}
+      onDrop={openDroppedSave}
+    >
+      {dragging ? (
+        <div className="save-drop-overlay" aria-hidden="true">
+          <div className="save-drop-label">세이브 파일을 여기에 드래그해주세요.</div>
+        </div>
+      ) : null}
+
+      <header className="topbar">
         <div className="topbar-main">
           <div className="title-stack">
             <h1>{save?.fileName ?? "G3P2 Save Editor"}</h1>
@@ -325,11 +399,15 @@ export default function App() {
           </div>
           <SaveMetaPanel save={save} />
         </div>
-        <button type="button" className="primary-button" onClick={writeEditedOriginal} disabled={!canWrite || busy}>
-          저장
-        </button>
+        <div className="topbar-actions">
+          <button type="button" className="secondary-button" onClick={openSaveFromUser} disabled={busy}>
+            파일 열기
+          </button>
+          <button type="button" className="primary-button" onClick={writeEditedOriginal} disabled={!canWrite || busy}>
+            {saveActionLabel}
+          </button>
+        </div>
       </header>
-
       <div className="tabs episode-tabs" role="tablist" aria-label="에피소드 선택">
         {(["episode4", "episode5"] as EpisodeKey[]).map((episode) => (
           <button
@@ -535,7 +613,7 @@ function InventoryEditor({
 
         <div className="inventory-money-editor">
           <span className="item-icon-slot money-icon-slot" aria-hidden="true">
-            <img src="/item-icons/money.png" alt="" />
+            <img src={getAssetSrc("item-icons/money.png")} alt="" />
           </span>
           <input
             id="money"
@@ -766,9 +844,14 @@ function InventoryPicker({
   onAdd: (item: InventoryCatalogItem) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<InventoryItemCategory | "all">("all");
+  const [manualCode, setManualCode] = useState("");
+  const [activeCategory, setActiveCategory] = useState<EquipmentPickerCategory>("all");
   const normalizedQuery = query.trim().toLowerCase();
+  const listCategory: PickerCategory = activeCategory === "manual" ? "all" : activeCategory;
   const items = INVENTORY_CATALOG.filter((item) => {
+    if (activeCategory === "manual") {
+      return false;
+    }
     if (activeCategory !== "all" && item.category !== activeCategory) {
       return false;
     }
@@ -776,7 +859,7 @@ function InventoryPicker({
       return true;
     }
     return item.name.toLowerCase().includes(normalizedQuery) || String(item.code).includes(normalizedQuery);
-  }).sort((a, b) => compareGroupedCatalogItems(a, b, activeCategory));
+  }).sort((a, b) => compareGroupedCatalogItems(a, b, listCategory));
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -809,47 +892,68 @@ function InventoryPicker({
               activeCategory={activeCategory}
               onCategoryChange={(category) => setActiveCategory(category)}
             />
+            <div className="picker-sidebar-divider" />
+            <button
+              type="button"
+              className={activeCategory === "manual" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveCategory("manual")}
+            >
+              수동 코드 입력
+            </button>
           </aside>
 
           <section className="item-picker-results">
-            <input
-              className="item-picker-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="이름 또는 코드 검색"
-            />
-            <div className="item-picker-list inventory-picker-list">
-              {items.map((item, index) => {
-                const alreadyAdded = currentItemCodes.includes(item.code);
-                const stats = getItemStatText(item.name);
-                const groupLabel = getInventoryResultGroupLabel(item, activeCategory);
-                const previousGroupLabel = index > 0 ? getInventoryResultGroupLabel(items[index - 1], activeCategory) : null;
-                const showGroupDivider = groupLabel !== null && groupLabel !== previousGroupLabel;
-                return (
-                  <React.Fragment key={`${item.category}-${item.code}`}>
-                    {showGroupDivider ? <div className="item-group-divider picker-group-divider">{groupLabel}</div> : null}
-                    <button
-                      type="button"
-                      className={alreadyAdded ? "item-picker-row inventory-item-row disabled" : "item-picker-row inventory-item-row"}
-                      onClick={() => {
-                        if (alreadyAdded) {
-                          window.alert("이미 인벤토리에 추가된 항목입니다.");
-                          return;
-                        }
-                        onAdd(item);
-                      }}
-                    >
-                      <ItemIcon item={item} />
-                      <span className="item-picker-main">
-                        <span className="item-picker-name">{item.name}</span>
-                        {stats ? <small className="item-stat-text">{stats}</small> : null}
-                      </span>
-                      <small className="item-picker-code">{item.code}</small>
-                    </button>
-                  </React.Fragment>
-                );
-              })}
-            </div>
+            {activeCategory === "manual" ? (
+              <ManualCodeInput
+                value={manualCode}
+                ariaLabel="수동 아이템 코드"
+                helpText="목록에 없는 아이템 코드를 직접 입력합니다."
+                confirmMessage="255를 넘는 아이템 코드입니다. 그래도 추가할까요?"
+                onChange={setManualCode}
+                onAdd={(code) => onAdd({ code, name: "알 수 없음", category: "item" })}
+              />
+            ) : (
+              <>
+                <input
+                  className="item-picker-search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="이름 또는 코드 검색"
+                />
+                <div className="item-picker-list inventory-picker-list">
+                  {items.map((item, index) => {
+                    const alreadyAdded = currentItemCodes.includes(item.code);
+                    const stats = getItemStatText(item.name);
+                    const groupLabel = getInventoryResultGroupLabel(item, listCategory);
+                    const previousGroupLabel = index > 0 ? getInventoryResultGroupLabel(items[index - 1], listCategory) : null;
+                    const showGroupDivider = groupLabel !== null && groupLabel !== previousGroupLabel;
+                    return (
+                      <React.Fragment key={`${item.category}-${item.code}`}>
+                        {showGroupDivider ? <div className="item-group-divider picker-group-divider">{groupLabel}</div> : null}
+                        <button
+                          type="button"
+                          className={alreadyAdded ? "item-picker-row inventory-item-row disabled" : "item-picker-row inventory-item-row"}
+                          onClick={() => {
+                            if (alreadyAdded) {
+                              window.alert("이미 인벤토리에 추가된 항목입니다.");
+                              return;
+                            }
+                            onAdd(item);
+                          }}
+                        >
+                          <ItemIcon item={item} />
+                          <span className="item-picker-main">
+                            <span className="item-picker-name">{item.name}</span>
+                            {stats ? <small className="item-stat-text">{stats}</small> : null}
+                          </span>
+                          <small className="item-picker-code">{item.code}</small>
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </section>
         </div>
       </section>
@@ -1008,8 +1112,10 @@ function PartyEditor({
                 >
                   <span className="drag-handle">::</span>
                   <span className="member-slot">{index + 1}</span>
-                  <span className="member-name">{CHARACTER_NAMES.get(code) ?? `알 수 없음 (${code})`}</span>
-                  <span className="member-code">{code}</span>
+                  <span className="member-details">
+                    <span className="member-name">{CHARACTER_NAMES.get(code) ?? `알 수 없음 (${code})`}</span>
+                    <small className="member-code">code {code}</small>
+                  </span>
                   <button type="button" className="danger-button" onClick={() => onRemove(index)}>
                     삭제
                   </button>
@@ -1019,7 +1125,7 @@ function PartyEditor({
           )}
         </section>
 
-        <button type="button" className="inventory-add-button" onClick={() => setPickerOpen(true)} disabled={codes.length >= 15}>
+        <button type="button" className="inventory-add-button" onClick={() => setPickerOpen(true)} disabled={codes.length >= PARTY_MEMBER_LIMIT}>
           파티원 추가
         </button>
       </div>
@@ -1045,9 +1151,13 @@ function PartyPicker({
   onAdd: (code: number) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [activeGroup, setActiveGroup] = useState<CharacterGroup | "all">("all");
+  const [manualCode, setManualCode] = useState("");
+  const [activeGroup, setActiveGroup] = useState<CharacterGroup | "all" | "manual">("all");
   const normalizedQuery = query.trim().toLowerCase();
   const characters = CHARACTER_OPTIONS.filter((character) => {
+    if (activeGroup === "manual") {
+      return false;
+    }
     const group = getCharacterGroup(character.name);
     if (activeGroup !== "all" && group !== activeGroup) {
       return false;
@@ -1063,6 +1173,17 @@ function PartyPicker({
     }
     return a.name.localeCompare(b.name, "ko-KR") || a.code - b.code;
   });
+  const addPartyCode = (code: number) => {
+    if (currentCodes.includes(code)) {
+      window.alert("이미 파티에 추가된 캐릭터입니다.");
+      return;
+    }
+    if (currentCodes.length >= PARTY_MEMBER_LIMIT) {
+      window.alert(`파티는 최대 ${PARTY_MEMBER_LIMIT}명까지 저장합니다.`);
+      return;
+    }
+    onAdd(code);
+  };
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -1101,57 +1222,68 @@ function PartyPicker({
                 {getCharacterGroupFilterLabel(group)}
               </button>
             ))}
+            <div className="picker-sidebar-divider" />
+            <button
+              type="button"
+              className={activeGroup === "manual" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveGroup("manual")}
+            >
+              수동 코드 입력
+            </button>
           </aside>
 
           <section className="item-picker-results">
-            <input
-              className="item-picker-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="이름 또는 코드 검색"
-            />
-            <div className="item-picker-list">
-              {characters.map((character, index) => {
-                const group = getCharacterGroup(character.name);
-                const previousGroup = index > 0 ? getCharacterGroup(characters[index - 1].name) : null;
-                const showGroupDivider = group !== previousGroup;
-                const alreadyAdded = currentCodes.includes(character.code);
+            {activeGroup === "manual" ? (
+              <ManualCodeInput
+                value={manualCode}
+                ariaLabel="수동 캐릭터 코드"
+                helpText="목록에 없는 캐릭터 코드를 직접 입력합니다. 확인된 25개 필드 캐릭터 외에는 용병단과 챕터 장비를 편집할 수 없습니다."
+                confirmMessage="255를 넘는 캐릭터 코드입니다. 그래도 추가할까요?"
+                onChange={setManualCode}
+                onAdd={addPartyCode}
+              />
+            ) : (
+              <>
+                <input
+                  className="item-picker-search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="이름 또는 코드 검색"
+                />
+                <div className="item-picker-list">
+                  {characters.map((character, index) => {
+                    const group = getCharacterGroup(character.name);
+                    const previousGroup = index > 0 ? getCharacterGroup(characters[index - 1].name) : null;
+                    const showGroupDivider = group !== previousGroup;
+                    const alreadyAdded = currentCodes.includes(character.code);
 
-                return (
-                  <React.Fragment key={`${character.code}-${character.name}`}>
-                    {showGroupDivider ? (
-                      <div className="character-divider-row">
-                        <span>{getCharacterGroupLabel(group)}</span>
-                        {group === "arena" ? (
-                          <small>아레나 캐릭터의 경험치는 저장되지 않으며 전투 종료시 레벨 1로 돌아갑니다.</small>
+                    return (
+                      <React.Fragment key={`${character.code}-${character.name}`}>
+                        {showGroupDivider ? (
+                          <div className="character-divider-row">
+                            <span>{getCharacterGroupLabel(group)}</span>
+                            {group === "arena" ? (
+                              <small>아레나 캐릭터의 데이터는 기록되지 않습니다.</small>
+                            ) : null}
+                          </div>
                         ) : null}
-                      </div>
-                    ) : null}
 
-                    <button
-                      type="button"
-                      className={alreadyAdded ? `item-picker-row disabled ${group}-character` : `item-picker-row ${group}-character`}
-                      onClick={() => {
-                        if (alreadyAdded) {
-                          window.alert("이미 파티에 추가된 캐릭터입니다.");
-                          return;
-                        }
-                        if (currentCodes.length >= 15) {
-                          window.alert("파티는 최대 15명까지 저장합니다.");
-                          return;
-                        }
-                        onAdd(character.code);
-                      }}
-                    >
-                      <span>{character.name}</span>
-                      <small>
-                        {getCharacterGroupLabel(group)} / {character.code}
-                      </small>
-                    </button>
-                  </React.Fragment>
-                );
-              })}
-            </div>
+                        <button
+                          type="button"
+                          className={alreadyAdded ? `item-picker-row disabled ${group}-character` : `item-picker-row ${group}-character`}
+                          onClick={() => addPartyCode(character.code)}
+                        >
+                          <span>{character.name}</span>
+                          <small>
+                            {getCharacterGroupLabel(group)} / {character.code}
+                          </small>
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </section>
         </div>
       </section>
@@ -1498,7 +1630,7 @@ function MercenaryEditor({
       ) : currentMercenary.supported ? (
         <div className="equipment-slots">
           <div className="equipment-note">
-            <small>확인된 캐릭터별 용병단 보유값만 저장됩니다.</small>
+            <small>해당 캐릭터의 용병을 관리합니다.</small>
           </div>
 
           <div className="equipment-field">
@@ -1539,8 +1671,13 @@ function MercenaryPicker({
   onSelect: (value: number) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [manualCode, setManualCode] = useState("");
+  const [activeTab, setActiveTab] = useState<"all" | "manual">("all");
   const normalizedQuery = query.trim().toLowerCase();
   const options = getMercenaryOptions(currentValue).filter((option) => {
+    if (activeTab === "manual") {
+      return false;
+    }
     if (!normalizedQuery) {
       return true;
     }
@@ -1567,31 +1704,56 @@ function MercenaryPicker({
 
         <div className="item-picker-body">
           <aside className="item-picker-sidebar">
-            <button type="button" className="picker-tab active">
+            <button
+              type="button"
+              className={activeTab === "all" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveTab("all")}
+            >
               전체
+            </button>
+            <div className="picker-sidebar-divider" />
+            <button
+              type="button"
+              className={activeTab === "manual" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveTab("manual")}
+            >
+              수동 코드 입력
             </button>
           </aside>
 
           <section className="item-picker-results">
-            <input
-              className="item-picker-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="이름 또는 코드 검색"
-            />
-            <div className="item-picker-list">
-              {options.map((option) => (
-                <button
-                  key={option.code}
-                  type="button"
-                  className={option.code === currentValue ? "item-picker-row disabled" : "item-picker-row"}
-                  onClick={() => onSelect(option.code)}
-                >
-                  <span>{option.name}</span>
-                  <small>{option.code}</small>
-                </button>
-              ))}
-            </div>
+            {activeTab === "manual" ? (
+              <ManualCodeInput
+                value={manualCode}
+                ariaLabel="수동 용병단 코드"
+                helpText="목록에 없는 용병단 코드를 직접 입력합니다."
+                confirmMessage="255를 넘는 용병단 코드입니다. 그래도 추가할까요?"
+                onChange={setManualCode}
+                onAdd={onSelect}
+              />
+            ) : (
+              <>
+                <input
+                  className="item-picker-search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="이름 또는 코드 검색"
+                />
+                <div className="item-picker-list">
+                  {options.map((option) => (
+                    <button
+                      key={option.code}
+                      type="button"
+                      className={option.code === currentValue ? "item-picker-row disabled" : "item-picker-row"}
+                      onClick={() => onSelect(option.code)}
+                    >
+                      <span>{option.name}</span>
+                      <small>{option.code}</small>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </section>
         </div>
       </section>
@@ -1652,69 +1814,69 @@ function getItemIconSrc(
   } | null
 ): string | undefined {
   if (item?.unknown) {
-    return "/item-icons/unknown.png";
+    return getAssetSrc("item-icons/unknown.png");
   }
   if (item?.weaponKind === "sword") {
-    return "/item-icons/sword.png";
+    return getAssetSrc("item-icons/sword.png");
   }
   if (item?.weaponKind === "booster") {
-    return "/item-icons/booster.png";
+    return getAssetSrc("item-icons/booster.png");
   }
   if (item?.weaponKind === "gun-slicer") {
-    return "/item-icons/gun-slicer.png";
+    return getAssetSrc("item-icons/gun-slicer.png");
   }
   if (item?.weaponKind === "handgun") {
-    return "/item-icons/handgun.png";
+    return getAssetSrc("item-icons/handgun.png");
   }
   if (item?.weaponKind === "cigar") {
-    return "/item-icons/cigar.png";
+    return getAssetSrc("item-icons/cigar.png");
   }
   if (item?.weaponKind === "greatsword") {
-    return "/item-icons/greatsword.png";
+    return getAssetSrc("item-icons/greatsword.png");
   }
   if (item?.weaponKind === "ribbon") {
-    return "/item-icons/ribbon.png";
+    return getAssetSrc("item-icons/ribbon.png");
   }
   if (item?.weaponKind === "camera-lens") {
-    return "/item-icons/camera-lens.png";
+    return getAssetSrc("item-icons/camera-lens.png");
   }
   if (item?.weaponKind === "claw") {
-    return "/item-icons/claw.png";
+    return getAssetSrc("item-icons/claw.png");
   }
   if (item?.weaponKind === "yoyo") {
-    return "/item-icons/yoyo.png";
+    return getAssetSrc("item-icons/yoyo.png");
   }
   if (item?.weaponKind === "bottle") {
-    return "/item-icons/bottle.png";
+    return getAssetSrc("item-icons/bottle.png");
   }
   if (item?.consumableKind === "potion") {
-    return "/item-icons/potion.png";
+    return getAssetSrc("item-icons/potion.png");
   }
   if (item?.consumableKind === "first-aid") {
-    return "/item-icons/first-aid.png";
+    return getAssetSrc("item-icons/first-aid.png");
   }
   if (item?.consumableKind === "poison") {
-    return "/item-icons/poison.png";
+    return getAssetSrc("item-icons/poison.png");
   }
   if (item?.consumableKind === "bomb") {
-    return "/item-icons/bomb.png";
+    return getAssetSrc("item-icons/bomb.png");
   }
   if (item?.category === "armor") {
-    return "/item-icons/armor.png";
+    return getAssetSrc("item-icons/armor.png");
   }
   if (item?.category === "necklace") {
-    return "/item-icons/necklace.png";
+    return getAssetSrc("item-icons/necklace.png");
   }
   if (item?.category === "ring") {
-    return "/item-icons/ring.png";
+    return getAssetSrc("item-icons/ring.png");
   }
   if (item?.category === "belt") {
-    return "/item-icons/belt.png";
+    return getAssetSrc("item-icons/belt.png");
   }
   if (item?.category === "shoes") {
-    return "/item-icons/shoes.png";
+    return getAssetSrc("item-icons/shoes.png");
   }
-  return item ? "/item-icons/unknown.png" : undefined;
+  return item ? getAssetSrc("item-icons/unknown.png") : undefined;
 }
 
 function getEquipmentSelectOptions(slot: EquipmentSlotKey, currentValue: number): EquipmentOption[] {
@@ -2010,4 +2172,94 @@ function toHex(value: number, width: number): string {
 
 function getFileName(filePath: string): string {
   return filePath.split(/[\\/]/).pop() ?? filePath;
+}
+
+function isFileDrag(event: DragEvent<HTMLElement>): boolean {
+  return Array.from(event.dataTransfer.types).includes("Files");
+}
+
+function isLeavingViewport(event: DragEvent<HTMLElement>): boolean {
+  return (
+    event.clientX <= 0 ||
+    event.clientY <= 0 ||
+    event.clientX >= window.innerWidth ||
+    event.clientY >= window.innerHeight
+  );
+}
+
+function getAssetSrc(path: string): string {
+  return `./${path}`;
+}
+
+function getDownloadFileName(filePath: string): string {
+  const fileName = getFileName(filePath);
+  const backupMatch = fileName.match(/^(.+\.sav)\.\d{14}$/i);
+  return backupMatch?.[1] ?? fileName;
+}
+
+async function openBrowserSavePicker(): Promise<LoadedSave | null> {
+  const file = await pickBrowserFile();
+  return file ? readBrowserSaveFile(file) : null;
+}
+
+function pickBrowserFile(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    let resolved = false;
+    let handleFocus: () => void;
+    const finish = (file: File | null) => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      window.removeEventListener("focus", handleFocus);
+      input.remove();
+      resolve(file);
+    };
+    handleFocus = () => {
+      window.setTimeout(() => finish(input.files?.item(0) ?? null), 300);
+    };
+    input.type = "file";
+    input.accept = ".sav,.SAV";
+    input.style.display = "none";
+    input.addEventListener(
+      "change",
+      () => {
+        finish(input.files?.item(0) ?? null);
+      },
+      { once: true }
+    );
+    window.addEventListener("focus", handleFocus, { once: true });
+    document.body.append(input);
+    input.click();
+  });
+}
+
+async function readBrowserSaveFile(file: File): Promise<LoadedSave> {
+  if (!/\.sav(?:\.\d{14})?$/i.test(file.name)) {
+    throw new Error(".sav 또는 .sav.년월일시분초 파일만 열 수 있습니다.");
+  }
+
+  const browserBytes = new Uint8Array(await file.arrayBuffer());
+  return {
+    save: parseSave(browserBytes, file.name),
+    browserBytes
+  };
+}
+
+function downloadSaveFile(data: Uint8Array, fileName: string): void {
+  const downloadBuffer = new ArrayBuffer(data.byteLength);
+  new Uint8Array(downloadBuffer).set(data);
+  const blob = new Blob([downloadBuffer], {
+    type: "application/octet-stream"
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.style.display = "none";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

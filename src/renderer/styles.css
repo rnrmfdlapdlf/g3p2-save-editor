@@ -2,7 +2,8 @@
   color: #1f2933;
   background: #f7f9fa;
   font-family: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
-  --editor-panel-height: 548px;
+  --editor-panel-height: 766px;
+  --editor-panel-height-tabbed: 710px;
 }
 
 * {
@@ -34,6 +35,29 @@ button:disabled {
 .app-shell {
   min-height: 100vh;
   padding: 28px;
+}
+
+.save-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  border: 6px dashed rgba(0, 124, 120, 0.92);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 12px rgba(0, 124, 120, 0.08);
+  pointer-events: none;
+}
+
+.save-drop-label {
+  border: 1px solid rgba(0, 124, 120, 0.18);
+  border-radius: 999px;
+  padding: 18px 28px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #005f5c;
+  font-size: 22px;
+  font-weight: 900;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
 }
 
 .topbar {
@@ -88,6 +112,13 @@ h1 {
   color: #6b7280;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .primary-button,
 .edit-panel button {
   min-height: 44px;
@@ -99,7 +130,7 @@ h1 {
 }
 
 .secondary-button {
-  min-height: 36px;
+  min-height: 44px;
   border: 1px solid #d1d5db;
   border-radius: 5px;
   padding: 0 14px;
@@ -573,18 +604,25 @@ h1 {
 }
 
 .party-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   padding: 22px;
-  min-height: var(--editor-panel-height);
+  height: var(--editor-panel-height);
+  min-height: 0;
 }
 
 .party-lists {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 18px;
+  min-height: 0;
 }
 
 .party-list-panel {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
+  min-height: 0;
 }
 
 .list-heading {
@@ -604,18 +642,22 @@ h1 {
 
 .party-member-list {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
   gap: 8px;
+  min-height: 0;
   margin: 0;
-  padding: 0;
+  overflow-y: auto;
+  padding: 0 4px 0 0;
   list-style: none;
 }
 
 .party-member {
   display: grid;
-  grid-template-columns: 28px 38px minmax(160px, 1fr) 72px auto;
+  grid-template-columns: 22px 30px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  min-height: 48px;
+  min-height: 62px;
   border: 1px solid #e5e7eb;
   border-radius: 5px;
   padding: 8px 10px;
@@ -641,14 +683,27 @@ h1 {
   text-align: center;
 }
 
-.member-slot,
+.member-slot {
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.member-details {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
 .member-code {
   color: #6b7280;
   font-variant-numeric: tabular-nums;
 }
 
 .member-name {
+  overflow: hidden;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .available-list {
@@ -726,7 +781,7 @@ h1 {
   display: grid;
   gap: 14px;
   padding: 22px;
-  min-height: var(--editor-panel-height);
+  min-height: var(--editor-panel-height-tabbed);
   align-content: start;
 }
 
@@ -832,7 +887,7 @@ h1 {
   min-height: 36px;
   border: 1px solid #d1d5db;
   border-radius: 5px;
-  padding: 0 14px;
+  padding: 0 12px;
   background: #ffffff;
   color: #374151;
   font-weight: 800;
@@ -1232,5 +1287,9 @@ td {
   .topbar-meta {
     flex-wrap: wrap;
     white-space: normal;
+  }
+
+  .party-member-list {
+    grid-template-columns: 1fr;
   }
 }
