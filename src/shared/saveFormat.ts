@@ -47,11 +47,55 @@ export type InventoryItemInfo = {
 export type EquipmentSlotKey = "weapon" | "armor" | "necklace" | "ring" | "belt" | "shoes";
 export type EquipmentScope = "field" | "battle";
 export type InventoryItemCategory = EquipmentSlotKey | "item";
+export type WeaponKind =
+  | "gun-slicer"
+  | "sword"
+  | "handgun"
+  | "booster"
+  | "cigar"
+  | "camera-lens"
+  | "greatsword"
+  | "ribbon"
+  | "claw"
+  | "bottle"
+  | "yoyo"
+  | "unknown";
+export type ConsumableKind = "potion" | "first-aid" | "poison" | "bomb";
+
+export const WEAPON_KIND_LABELS: Record<WeaponKind, string> = {
+  "gun-slicer": "건 슬라이서",
+  sword: "검",
+  handgun: "핸드건",
+  booster: "부스터",
+  cigar: "시가",
+  "camera-lens": "카메라 렌즈",
+  greatsword: "대검",
+  ribbon: "리본",
+  claw: "크로",
+  bottle: "술병",
+  yoyo: "요요",
+  unknown: "미분류"
+};
+
+export const CONSUMABLE_KIND_LABELS: Record<ConsumableKind, string> = {
+  potion: "포션",
+  "first-aid": "구급상자",
+  poison: "독약",
+  bomb: "폭탄"
+};
+
+export type EquipmentOption = {
+  code: number;
+  name: string;
+  weaponKind?: WeaponKind;
+};
 
 export type InventoryCatalogItem = {
   code: number;
   name: string;
   category: InventoryItemCategory;
+  weaponKind?: WeaponKind;
+  consumableKind?: ConsumableKind;
 };
 
 export type InventorySlotInfo = {
@@ -168,16 +212,14 @@ export const INVENTORY_ITEM_DEFINITIONS: Record<InventoryItemKey, { name: string
   gift: { name: "기프트", itemCode: 225 }
 };
 
-export const INVENTORY_TABLES: Record<EpisodeKey, { startOffset: number; countOffset: number; slotCount: number }> = {
+export const INVENTORY_TABLES: Record<EpisodeKey, { startOffset: number; countOffset: number }> = {
   episode4: {
     startOffset: 0x63fc,
-    countOffset: 0x63f4,
-    slotCount: 12
+    countOffset: 0x63f4
   },
   episode5: {
     startOffset: 0x74ac,
-    countOffset: 0x74a4,
-    slotCount: 4
+    countOffset: 0x74a4
   }
 };
 
@@ -188,6 +230,7 @@ export const PARTY_OFFSETS: Record<EpisodeKey, { label: string; offset: number }
 
 export const CHARACTER_NAMES = new Map<number, string>([
   [38, "레드헤드"],
+  [39, "알 수 없음 (39)"],
   [56, "아셀라스"],
   [57, "젠"],
   [64, "카를로스"],
@@ -257,6 +300,10 @@ export const CHARACTER_OPTIONS = Array.from(CHARACTER_NAMES, ([code, name]) => (
   (a, b) => a.code - b.code
 );
 
+function isArenaCharacterName(name: string): boolean {
+  return name.startsWith("아레나");
+}
+
 export const EQUIPMENT_SLOT_DEFINITIONS: Array<{ key: EquipmentSlotKey; label: string; relativeOffset: number }> = [
   { key: "weapon", label: "무기", relativeOffset: 0 },
   { key: "armor", label: "방어구", relativeOffset: 2 },
@@ -266,21 +313,73 @@ export const EQUIPMENT_SLOT_DEFINITIONS: Array<{ key: EquipmentSlotKey; label: s
   { key: "shoes", label: "신발", relativeOffset: 10 }
 ];
 
-export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, Array<{ code: number; name: string }>> = {
+export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, EquipmentOption[]> = {
   weapon: [
     { code: 0, name: "없음" },
-    { code: 25, name: "어씨스터" },
-    { code: 26, name: "듀얼 레이저" },
-    { code: 56, name: "수련검" },
-    { code: 57, name: "키퍼" },
-    { code: 58, name: "블릿츠" },
-    { code: 59, name: "폴리커" },
-    { code: 60, name: "가디안" },
-    { code: 61, name: "장검" },
-    { code: 62, name: "씨즈" },
-    { code: 174, name: "인스트럭터" },
-    { code: 178, name: "실버 CON" },
-    { code: 180, name: "실버 BAL" }
+    { code: 1, name: "옐로 리본", weaponKind: "ribbon" },
+    { code: 3, name: "화이트 리본", weaponKind: "ribbon" },
+    { code: 4, name: "레드 리본", weaponKind: "ribbon" },
+    { code: 10, name: "베이직 휠", weaponKind: "yoyo" },
+    { code: 11, name: "체리오트", weaponKind: "yoyo" },
+    { code: 15, name: "글래스 렌즈", weaponKind: "camera-lens" },
+    { code: 16, name: "옵틱 써클", weaponKind: "camera-lens" },
+    { code: 17, name: "프라임 렌즈", weaponKind: "camera-lens" },
+    { code: 18, name: "언터처블 렌즈", weaponKind: "camera-lens" },
+    { code: 20, name: "베이직 크로", weaponKind: "claw" },
+    { code: 21, name: "세라믹 크로", weaponKind: "claw" },
+    { code: 22, name: "아이언 크로", weaponKind: "claw" },
+    { code: 23, name: "크리스탈 크로", weaponKind: "claw" },
+    { code: 25, name: "어씨스터", weaponKind: "handgun" },
+    { code: 26, name: "듀얼 레이지", weaponKind: "handgun" },
+    { code: 27, name: "굿 펠라스", weaponKind: "handgun" },
+    { code: 28, name: "길라디움 RX", weaponKind: "handgun" },
+    { code: 29, name: "트윈 블래스터", weaponKind: "handgun" },
+    { code: 30, name: "리볼버 발렌타인", weaponKind: "handgun" },
+    { code: 32, name: "마일드 스모크", weaponKind: "cigar" },
+    { code: 34, name: "헤비 원", weaponKind: "cigar" },
+    { code: 36, name: "체인지 스모커", weaponKind: "cigar" },
+    { code: 45, name: "블루", weaponKind: "booster" },
+    { code: 46, name: "튜터", weaponKind: "booster" },
+    { code: 47, name: "토르트", weaponKind: "booster" },
+    { code: 48, name: "레토르트", weaponKind: "booster" },
+    { code: 49, name: "T-써클렛", weaponKind: "booster" },
+    { code: 50, name: "S-써클렛", weaponKind: "booster" },
+    { code: 51, name: "가리우스", weaponKind: "booster" },
+    { code: 52, name: "G-써클렛", weaponKind: "booster" },
+    { code: 53, name: "아이리스 써클렛", weaponKind: "booster" },
+    { code: 56, name: "수련검", weaponKind: "sword" },
+    { code: 57, name: "키퍼", weaponKind: "sword" },
+    { code: 58, name: "블리츠", weaponKind: "sword" },
+    { code: 59, name: "플리커", weaponKind: "sword" },
+    { code: 60, name: "가디안", weaponKind: "sword" },
+    { code: 61, name: "장검", weaponKind: "sword" },
+    { code: 62, name: "씨즈", weaponKind: "sword" },
+    { code: 64, name: "큐티 스톤", weaponKind: "greatsword" },
+    { code: 129, name: "스페이스 리퍼", weaponKind: "gun-slicer" },
+    { code: 130, name: "펠레의 빙검", weaponKind: "gun-slicer" },
+    { code: 134, name: "크림슨 프리즘", weaponKind: "booster" },
+    { code: 135, name: "바인드 프리즘", weaponKind: "booster" },
+    { code: 136, name: "헬 프리즘", weaponKind: "booster" },
+    { code: 140, name: "젤 샤프란", weaponKind: "ribbon" },
+    { code: 142, name: "쥬다스 요요", weaponKind: "yoyo" },
+    { code: 146, name: "여인의 키스", weaponKind: "claw" },
+    { code: 150, name: "군터의 팔", weaponKind: "cigar" },
+    { code: 174, name: "인스트럭터", weaponKind: "gun-slicer" },
+    { code: 178, name: "실버 EXP", weaponKind: "gun-slicer" },
+    { code: 179, name: "실버 QUICK", weaponKind: "gun-slicer" },
+    { code: 180, name: "실버 BAL", weaponKind: "gun-slicer" },
+    { code: 181, name: "실버 PLUS", weaponKind: "gun-slicer" },
+    { code: 182, name: "골드 슬라이서", weaponKind: "gun-slicer" },
+    { code: 183, name: "골드 EXP", weaponKind: "gun-slicer" },
+    { code: 185, name: "골드 BAL", weaponKind: "gun-slicer" },
+    { code: 208, name: "네리사의 마음", weaponKind: "ribbon" },
+    { code: 209, name: "레인보우 리본", weaponKind: "ribbon" },
+    { code: 215, name: "캐츠시저", weaponKind: "claw" },
+    { code: 216, name: "이글 네일", weaponKind: "claw" },
+    { code: 217, name: "시가 보르도", weaponKind: "cigar" },
+    { code: 221, name: "드래곤 스네일", weaponKind: "sword" },
+    { code: 226, name: "로프란트 글로리", weaponKind: "sword" },
+    { code: 154, name: "멸살지옥검", weaponKind: "sword" }
   ],
   armor: [
     { code: 0, name: "없음" },
@@ -294,7 +393,7 @@ export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, Array<{ code: number; n
     { code: 77, name: "애쓸릿 어버" },
     { code: 78, name: "파워 아머" },
     { code: 79, name: "파워 EXP" },
-    { code: 80, name: "엘란듀 아머" },
+    { code: 80, name: "엘린듐 아머" },
     { code: 81, name: "크로슬리 페일러" },
     { code: 82, name: "아크 아머" },
     { code: 161, name: "아크론 아머" },
@@ -303,9 +402,9 @@ export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, Array<{ code: number; n
   necklace: [
     { code: 0, name: "없음" },
     { code: 102, name: "그라톡스" },
-    { code: 103, name: "미라쥬" },
-    { code: 104, name: "천신경" },
-    { code: 105, name: "플레임블라스" },
+    { code: 103, name: "천신경" },
+    { code: 104, name: "미라쥐" },
+    { code: 105, name: "프라임 블레스" },
     { code: 165, name: "천사의 선물" }
   ],
   ring: [
@@ -313,16 +412,16 @@ export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, Array<{ code: number; n
     { code: 96, name: "금반지" },
     { code: 97, name: "루비반지" },
     { code: 98, name: "다이아반지" },
-    { code: 99, name: "램버트반지" },
+    { code: 99, name: "램버트의 반지" },
     { code: 100, name: "코어반지" }
   ],
   belt: [
     { code: 0, name: "없음" },
     { code: 90, name: "가죽벨트" },
     { code: 91, name: "체인벨트" },
-    { code: 92, name: "아이언벨트" },
-    { code: 93, name: "램버트벨트" },
-    { code: 94, name: "제쿨트벨트" },
+    { code: 92, name: "아이언 벨트" },
+    { code: 93, name: "램버트의 벨트" },
+    { code: 94, name: "제쿨트 벨트" },
     { code: 163, name: "스톤의 벨트" }
   ],
   shoes: [
@@ -330,9 +429,9 @@ export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, Array<{ code: number; n
     { code: 84, name: "등산화" },
     { code: 85, name: "군화" },
     { code: 86, name: "파워드 슈즈" },
-    { code: 87, name: "램버트 슈즈" },
+    { code: 87, name: "램버트의 슈즈" },
     { code: 88, name: "라이트닝 슈즈" },
-    { code: 162, name: "영자신발" }
+    { code: 162, name: "영자 신발" }
   ]
 };
 
@@ -343,18 +442,25 @@ export const INVENTORY_CATALOG: InventoryCatalogItem[] = [
       .map((option) => ({
         code: option.code,
         name: option.name,
-        category: slot.key as InventoryItemCategory
+        category: slot.key as InventoryItemCategory,
+        weaponKind: option.weaponKind
       }))
   ),
-  { code: 122, name: "로우캡슐", category: "item" as InventoryItemCategory },
-  { code: 222, name: "미디엄캡슐", category: "item" as InventoryItemCategory },
-  { code: 223, name: "하이캡슐", category: "item" as InventoryItemCategory },
-  { code: 224, name: "빅캡슐", category: "item" as InventoryItemCategory },
-  { code: 123, name: "회복캡슐", category: "item" as InventoryItemCategory },
-  { code: 124, name: "완전회복캡슐", category: "item" as InventoryItemCategory },
-  { code: 125, name: "안정제", category: "item" as InventoryItemCategory },
-  { code: 126, name: "여신의 성수", category: "item" as InventoryItemCategory },
-  { code: 225, name: "기프트", category: "item" as InventoryItemCategory }
+  { code: 122, name: "로우캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 222, name: "미디엄캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 223, name: "하이캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 224, name: "빅캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 123, name: "회복캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 124, name: "완전회복캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 125, name: "안정제", category: "item" as InventoryItemCategory, consumableKind: "first-aid" as ConsumableKind },
+  { code: 126, name: "여신의 성수", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 225, name: "기프트", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 116, name: "배틀포이즌1", category: "item" as InventoryItemCategory, consumableKind: "poison" as ConsumableKind },
+  { code: 117, name: "배틀포이즌2", category: "item" as InventoryItemCategory, consumableKind: "poison" as ConsumableKind },
+  { code: 118, name: "배틀포이즌3", category: "item" as InventoryItemCategory, consumableKind: "poison" as ConsumableKind },
+  { code: 168, name: "파멸의 폭염2", category: "item" as InventoryItemCategory, consumableKind: "bomb" as ConsumableKind },
+  { code: 169, name: "라이징 스톰", category: "item" as InventoryItemCategory, consumableKind: "bomb" as ConsumableKind },
+  { code: 170, name: "애스트로 범", category: "item" as InventoryItemCategory, consumableKind: "bomb" as ConsumableKind }
 ].sort((a, b) => a.category.localeCompare(b.category) || a.code - b.code);
 
 export const MERCENARY_OPTIONS: Array<{ code: number; name: string }> = [
@@ -372,7 +478,7 @@ export const MERCENARY_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 13, name: "미네랄군단" },
   { code: 14, name: "가이라리더" },
   { code: 15, name: "아벨리안군단" },
-  { code: 16, name: "레즈스탕스1" },
+  { code: 16, name: "레지스탕스1" },
   { code: 17, name: "레지스탕스2" },
   { code: 18, name: "블랙스피어스" },
   { code: 19, name: "글로리가드" },
@@ -411,8 +517,8 @@ export const MERCENARY_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 52, name: "브레인엠티군단" },
   { code: 53, name: "세큐리티볼군단" },
   { code: 54, name: "세큐리티볼군단" },
-  { code: 55, name: "글로리가드" },
-  { code: 56, name: "글로리가드" },
+  { code: 55, name: "글로리가드1" },
+  { code: 56, name: "글로리가드2" },
   { code: 57, name: "슬라임" },
   { code: 58, name: "팡테온" },
   { code: 59, name: "팡테온" },
@@ -432,22 +538,24 @@ export const MERCENARY_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 73, name: "로드군단" },
   { code: 74, name: "해커" },
   { code: 75, name: "블랙스피어스" },
-  { code: 77, name: "팬널" }
+  { code: 77, name: "네트_가이어버그" }
 ];
-
-const CHAPTER_EQUIPMENT_BASE_OFFSETS: Record<number, number> = {
-  219: 0x3ed0,
-  220: 0x49bc,
-  221: 0x4618
-};
 
 const BATTLE_EQUIPMENT_BASE_OFFSETS: Record<number, number> = {
   219: 0x15409,
+  222: 0xf827,
+  223: 0xfcfc,
   220: 0x15db3,
   221: 0x158de
 };
 
-const MERCENARY_RELATIVE_OFFSET = -0x30;
+const FIELD_CHARACTER_RECORD_START_OFFSET = 0x0748;
+const FIELD_CHARACTER_RECORD_STRIDE = 0x03a4;
+const FIELD_CHARACTER_RECORD_COUNT = 25;
+const FIELD_CHARACTER_CODE_RELATIVE_OFFSET = 0x0a4;
+const FIELD_MERCENARY_RELATIVE_OFFSET = 0x0bc;
+const FIELD_EQUIPMENT_RELATIVE_OFFSET = 0x0ec;
+const EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER = 0x48;
 
 const CHECKSUM_WEIGHTS = [3, 5, 7, 9] as const;
 
@@ -633,7 +741,7 @@ function readInventorySlots(data: Uint8Array, episode: EpisodeKey): InventorySlo
     return [];
   }
 
-  const count = Math.min(readInverseUint32(data, table.countOffset), table.slotCount);
+  const count = getInventoryReadableCount(data, table);
   const slots: InventorySlotInfo[] = [];
 
   for (let index = 0; index < count; index += 1) {
@@ -702,8 +810,9 @@ function applyInventorySlotEdits(data: Uint8Array, edits: Partial<Record<Episode
     }
 
     const normalized = episodeEdits.filter((item) => item.quantity > 0);
-    if (normalized.length > table.slotCount) {
-      throw new Error(`인벤토리는 최대 ${table.slotCount}개 항목까지 저장합니다.`);
+    const slotLimit = getInventoryWritableLimit(data, table);
+    if (normalized.length > slotLimit) {
+      throw new Error("인벤토리 데이터가 세이브 파일 범위를 벗어납니다.");
     }
 
     const seenCodes = new Set<number>();
@@ -772,7 +881,7 @@ function findInventorySlot(
   if (table.startOffset <= 0) {
     return null;
   }
-  const scanCount = Math.min(readInverseUint32(data, table.countOffset), table.slotCount);
+  const scanCount = getInventoryReadableCount(data, table);
 
   for (let index = 0; index < scanCount; index += 1) {
     const codeOffset = table.startOffset + index * 8;
@@ -797,8 +906,9 @@ function findReusableInventorySlot(
     return null;
   }
 
-  const currentCount = Math.min(readInverseUint32(data, table.countOffset), table.slotCount);
-  if (currentCount >= table.slotCount) {
+  const currentCount = getInventoryReadableCount(data, table);
+  const slotLimit = getInventoryWritableLimit(data, table);
+  if (currentCount >= slotLimit) {
     return null;
   }
 
@@ -809,6 +919,15 @@ function findReusableInventorySlot(
   }
 
   return { index: currentCount, codeOffset, quantityOffset };
+}
+
+function getInventoryReadableCount(data: Uint8Array, table: (typeof INVENTORY_TABLES)[EpisodeKey]): number {
+  const rawCount = readInverseUint32(data, table.countOffset);
+  return Math.min(rawCount, getInventoryWritableLimit(data, table));
+}
+
+function getInventoryWritableLimit(data: Uint8Array, table: (typeof INVENTORY_TABLES)[EpisodeKey]): number {
+  return Math.max(0, Math.floor((data.length - table.startOffset) / 8));
 }
 
 function updateInventoryCount(data: Uint8Array, episode: EpisodeKey, minimumCount: number): void {
@@ -850,6 +969,10 @@ function readParty(data: Uint8Array, episode: EpisodeKey): PartyInfo {
 }
 
 function readEquipment(data: Uint8Array, scope: EquipmentScope): CharacterEquipmentInfo[] {
+  if (scope === "field") {
+    return readFieldCharacterCodes(data).map((characterCode) => readCharacterEquipment(data, characterCode, scope));
+  }
+
   const activeParty = readParty(data, getActiveEpisodeKey(data));
   return activeParty.members.map((member) => readCharacterEquipment(data, member.code, scope));
 }
@@ -905,34 +1028,120 @@ function applyEquipmentEdits(data: Uint8Array, edits: CharacterEquipmentEdit[]):
 
 function getEquipmentBaseOffset(data: Uint8Array, characterCode: number, scope: EquipmentScope): number | null {
   const locationCode = readInverseUint32(data, 0x0c);
-  const baseOffset = scope === "field" ? CHAPTER_EQUIPMENT_BASE_OFFSETS[characterCode] : BATTLE_EQUIPMENT_BASE_OFFSETS[characterCode];
+
+  if (scope === "field") {
+    return getFieldEquipmentBaseOffset(data, characterCode);
+  }
 
   if (scope === "battle" && locationCode !== 1) {
     return null;
   }
 
-  if (typeof baseOffset !== "number" || baseOffset + 12 > data.length) {
+  const baseOffset = BATTLE_EQUIPMENT_BASE_OFFSETS[characterCode];
+
+  if (typeof baseOffset === "number" && baseOffset + 12 <= data.length) {
+    return baseOffset;
+  }
+
+  return findCharacterEquipmentBaseOffset(data, characterCode, scope === "battle");
+}
+
+function getFieldEquipmentBaseOffset(data: Uint8Array, characterCode: number): number | null {
+  const recordBaseOffset = findFieldCharacterRecordBaseOffset(data, characterCode);
+  if (recordBaseOffset === null) {
     return null;
   }
 
-  return baseOffset;
+  const equipmentOffset = recordBaseOffset + FIELD_EQUIPMENT_RELATIVE_OFFSET;
+  if (equipmentOffset + 12 > data.length || !looksLikeEquipmentBlock(data, equipmentOffset)) {
+    return null;
+  }
+
+  return equipmentOffset;
+}
+
+function findFieldCharacterRecordBaseOffset(data: Uint8Array, characterCode: number): number | null {
+  for (let index = 0; index < FIELD_CHARACTER_RECORD_COUNT; index += 1) {
+    const recordBaseOffset = FIELD_CHARACTER_RECORD_START_OFFSET + index * FIELD_CHARACTER_RECORD_STRIDE;
+    const codeOffset = recordBaseOffset + FIELD_CHARACTER_CODE_RELATIVE_OFFSET;
+    if (codeOffset + 2 > data.length) {
+      break;
+    }
+
+    if (readInverseUint16(data, codeOffset) === characterCode) {
+      return recordBaseOffset;
+    }
+  }
+
+  return null;
+}
+
+function readFieldCharacterCodes(data: Uint8Array): number[] {
+  const codes: number[] = [];
+  const seen = new Set<number>();
+
+  for (let index = 0; index < FIELD_CHARACTER_RECORD_COUNT; index += 1) {
+    const recordBaseOffset = FIELD_CHARACTER_RECORD_START_OFFSET + index * FIELD_CHARACTER_RECORD_STRIDE;
+    const codeOffset = recordBaseOffset + FIELD_CHARACTER_CODE_RELATIVE_OFFSET;
+    if (codeOffset + 2 > data.length) {
+      break;
+    }
+
+    const characterCode = readInverseUint16(data, codeOffset);
+    if (!seen.has(characterCode)) {
+      seen.add(characterCode);
+      codes.push(characterCode);
+    }
+  }
+
+  return codes;
+}
+
+function findCharacterEquipmentBaseOffset(data: Uint8Array, characterCode: number, preferLast: boolean): number | null {
+  let fallbackOffset: number | null = null;
+
+  for (let offset = 0; offset + 2 <= data.length; offset += 1) {
+    if (readInverseUint16(data, offset) !== characterCode) {
+      continue;
+    }
+
+    const equipmentOffset = offset + EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER;
+    if (equipmentOffset + 12 > data.length || !looksLikeEquipmentBlock(data, equipmentOffset)) {
+      continue;
+    }
+
+    if (!preferLast) {
+      return equipmentOffset;
+    }
+    fallbackOffset = equipmentOffset;
+  }
+
+  return fallbackOffset;
+}
+
+function looksLikeEquipmentBlock(data: Uint8Array, offset: number): boolean {
+  return EQUIPMENT_SLOT_DEFINITIONS.every((slot) => {
+    const value = readInverseUint16(data, offset + slot.relativeOffset);
+    return value >= 0 && value <= 1000;
+  });
 }
 
 function readMercenaries(data: Uint8Array): CharacterMercenaryInfo[] {
-  const activeParty = readParty(data, getActiveEpisodeKey(data));
-  return activeParty.members.map((member) => readCharacterMercenary(data, member.code));
+  return readFieldCharacterCodes(data).map((characterCode) => readCharacterMercenary(data, characterCode));
 }
 
 function readCharacterMercenary(data: Uint8Array, characterCode: number): CharacterMercenaryInfo {
   const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
-  const offset = getMercenaryOffset(characterCode);
+  const offset = getMercenaryOffset(data, characterCode);
 
   if (offset === null || offset + 4 > data.length) {
     return {
       characterCode,
       characterName,
       supported: false,
-      note: "아직 용병단 위치가 확인되지 않은 캐릭터입니다."
+      note: isArenaCharacterName(characterName)
+        ? "아레나 캐릭터의 정보는 세이브 파일에 기록되지 않습니다."
+        : "아직 용병단 위치가 확인되지 않은 캐릭터입니다."
     };
   }
 
@@ -948,7 +1157,7 @@ function readCharacterMercenary(data: Uint8Array, characterCode: number): Charac
 
 function applyMercenaryEdits(data: Uint8Array, edits: CharacterMercenaryEdit[]): void {
   for (const edit of edits) {
-    const offset = getMercenaryOffset(edit.characterCode);
+    const offset = getMercenaryOffset(data, edit.characterCode);
     if (offset === null || offset + 4 > data.length) {
       continue;
     }
@@ -956,9 +1165,14 @@ function applyMercenaryEdits(data: Uint8Array, edits: CharacterMercenaryEdit[]):
   }
 }
 
-function getMercenaryOffset(characterCode: number): number | null {
-  const equipmentOffset = CHAPTER_EQUIPMENT_BASE_OFFSETS[characterCode];
-  return typeof equipmentOffset === "number" ? equipmentOffset + MERCENARY_RELATIVE_OFFSET : null;
+function getMercenaryOffset(data: Uint8Array, characterCode: number): number | null {
+  const recordBaseOffset = findFieldCharacterRecordBaseOffset(data, characterCode);
+  if (recordBaseOffset === null) {
+    return null;
+  }
+
+  const mercenaryOffset = recordBaseOffset + FIELD_MERCENARY_RELATIVE_OFFSET;
+  return mercenaryOffset + 4 <= data.length ? mercenaryOffset : null;
 }
 
 function readInverseUint16(data: Uint8Array, offset: number): number {

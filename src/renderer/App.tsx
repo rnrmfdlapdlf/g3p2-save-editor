@@ -5,8 +5,11 @@ import {
   CharacterMercenaryInfo,
   CHARACTER_NAMES,
   CHARACTER_OPTIONS,
+  CONSUMABLE_KIND_LABELS,
+  ConsumableKind,
   EQUIPMENT_OPTIONS,
   EQUIPMENT_SLOT_DEFINITIONS,
+  EquipmentOption,
   EquipmentSlotKey,
   EquipmentScope,
   EpisodeKey,
@@ -18,8 +21,11 @@ import {
   MERCENARY_OPTIONS,
   MoneyInfo,
   PartyInfo,
-  SaveInfo
+  SaveInfo,
+  WEAPON_KIND_LABELS,
+  WeaponKind
 } from "../shared/saveFormat";
+import { getItemStatText } from "../shared/itemStats";
 
 const episodeLabels: Record<EpisodeKey, string> = {
   episode4: "에피소드4",
@@ -41,10 +47,6 @@ const editorTabLabels: Record<EditorTab, string> = {
 };
 
 const emptySaveStatus = "G3P_II*.sav 파일을 여기로 드래그하세요.";
-const inventorySlotLimits: Record<EpisodeKey, number> = {
-  episode4: 12,
-  episode5: 4
-};
 
 export default function App() {
   const [save, setSave] = useState<SaveInfo | null>(null);
@@ -230,12 +232,6 @@ export default function App() {
 
   function addInventoryItem(item: InventoryCatalogItem) {
     const currentItems = draftInventory[activeEpisode];
-    const slotLimit = inventorySlotLimits[activeEpisode];
-    if (currentItems.length >= slotLimit) {
-      window.alert(`인벤토리는 최대 ${slotLimit}개 항목까지 저장합니다.`);
-      setStatus(`인벤토리는 최대 ${slotLimit}개 항목까지 저장합니다.`);
-      return false;
-    }
     if (currentItems.some((currentItem) => currentItem.itemCode === item.code)) {
       window.alert("이미 인벤토리에 추가된 항목입니다.");
       setStatus("이미 인벤토리에 추가된 항목입니다.");
@@ -315,7 +311,11 @@ export default function App() {
           setDragging(true);
         }}
         onDragOver={(event) => event.preventDefault()}
-        onDragLeave={() => setDragging(false)}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setDragging(false);
+          }
+        }}
         onDrop={openDroppedSave}
       >
         <div className="topbar-main">
@@ -357,8 +357,6 @@ export default function App() {
             onInventoryDelete={deleteInventoryItem}
             onInventoryAdd={addInventoryItem}
           />
-
-          <ChecksumBadge save={save} />
         </aside>
 
         <section className="content">
@@ -514,7 +512,9 @@ function InventoryEditor({
   onInventoryDelete: (index: number) => void;
   onInventoryAdd: (item: InventoryCatalogItem) => boolean;
 }) {
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [itemInfoOpen, setItemInfoOpen] = useState(false);
   const originalByCode = useMemo(() => {
     return new Map(originalInventory.map((item) => [item.itemCode, item]));
   }, [originalInventory]);
@@ -524,7 +524,6 @@ function InventoryEditor({
     <article className="equipment-card inventory-card">
       <div className="section-title">
         <div>
-          <span className="eyebrow">인벤토리</span>
           <h2>인벤토리</h2>
         </div>
       </div>
@@ -534,10 +533,13 @@ function InventoryEditor({
           <span>돈</span>
         </div>
 
-        <div className="edit-panel inventory-money-editor">
-          <label htmlFor="money">돈</label>
+        <div className="inventory-money-editor">
+          <span className="item-icon-slot money-icon-slot" aria-hidden="true">
+            <img src="/item-icons/money.png" alt="" />
+          </span>
           <input
             id="money"
+            aria-label="돈"
             inputMode="numeric"
             value={draftMoneyValue}
             onChange={(event) => onMoneyChange(event.target.value)}
@@ -546,60 +548,38 @@ function InventoryEditor({
         </div>
 
         <div className="inventory-section-heading">
-          <span>인벤토리 항목</span>
+          <span>소지품</span>
         </div>
 
-        {draftInventory.length === 0 ? (
-          <p className="empty compact">인벤토리가 비어있습니다.</p>
-        ) : (
-          <div className="inventory-list">
-            {draftInventory.map((item, index) => {
-              const original = originalByCode.get(item.itemCode);
-              const catalogItem = getCatalogItem(item.itemCode);
-              const name = catalogItem?.name ?? original?.name ?? "알 수 없음";
-              const metadata = original
-                ? `code ${item.itemCode} / code offset 0x${toHex(original.codeOffset, 4)} / quantity offset 0x${toHex(
-                    original.quantityOffset,
-                    4
-                  )} / raw ${original.rawQuantity}`
-                : `code ${item.itemCode}`;
-              return (
-                <div key={`${item.itemCode}-${index}`} className="inventory-entry">
-                  <div className="inventory-row">
-                    <div className="inventory-row-main">
-                      <strong>{name}</strong>
-                    </div>
-                    <input
-                      aria-label={`${name} 수량`}
-                      inputMode="numeric"
-                      value={item.quantity}
-                      onChange={(event) => onInventoryChange(index, event.target.value)}
-                      placeholder="0"
-                      min={0}
-                      max={99}
-                      disabled={!supported}
-                    />
-                    <button
-                      type="button"
-                      className="danger-button"
-                      onClick={() => onInventoryDelete(index)}
-                      disabled={!supported}
-                    >
-                      삭제
-                    </button>
-                  </div>
-                  <small className="inventory-metadata">{metadata}</small>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="inventory-action-grid">
+          <button type="button" className="inventory-review-button" onClick={() => setReviewOpen(true)} disabled={!supported}>
+            아이템 확인
+          </button>
+          <button type="button" className="inventory-add-button" onClick={() => setPickerOpen(true)} disabled={!supported}>
+            아이템 추가
+          </button>
+        </div>
 
-        <button type="button" className="inventory-add-button" onClick={() => setPickerOpen(true)} disabled={!supported}>
-          항목 추가
+        <div className="inventory-section-heading">
+          <span>아이템</span>
+        </div>
+
+        <button type="button" className="inventory-review-button" onClick={() => setItemInfoOpen(true)}>
+          아이템 정보
         </button>
-
       </div>
+
+      {reviewOpen ? (
+        <InventoryReviewModal
+          draftInventory={draftInventory}
+          originalByCode={originalByCode}
+          supported={supported}
+          onClose={() => setReviewOpen(false)}
+          onInventoryChange={onInventoryChange}
+          onInventoryDelete={onInventoryDelete}
+          onInventoryAdd={onInventoryAdd}
+        />
+      ) : null}
 
       {pickerOpen ? (
         <InventoryPicker
@@ -612,7 +592,167 @@ function InventoryEditor({
           }}
         />
       ) : null}
+
+      {itemInfoOpen ? <ItemInfoModal onClose={() => setItemInfoOpen(false)} /> : null}
     </article>
+  );
+}
+
+function InventoryReviewModal({
+  draftInventory,
+  originalByCode,
+  supported,
+  onClose,
+  onInventoryChange,
+  onInventoryDelete,
+  onInventoryAdd
+}: {
+  draftInventory: DraftInventorySlot[];
+  originalByCode: Map<number, InventorySlotInfo>;
+  supported: boolean;
+  onClose: () => void;
+  onInventoryChange: (index: number, value: string) => void;
+  onInventoryDelete: (index: number) => void;
+  onInventoryAdd: (item: InventoryCatalogItem) => boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [manualCode, setManualCode] = useState("");
+  const [activeCategory, setActiveCategory] = useState<EquipmentPickerCategory>("all");
+  const normalizedQuery = query.trim().toLowerCase();
+  const listCategory: PickerCategory = activeCategory === "manual" ? "all" : activeCategory;
+  const filteredInventory = draftInventory
+    .map((item, index) => ({ item, index, catalogItem: getCatalogItem(item.itemCode) }))
+    .filter(({ item, catalogItem }) => {
+      if (activeCategory === "manual") {
+        return false;
+      }
+      const name = catalogItem?.name ?? originalByCode.get(item.itemCode)?.name ?? "알 수 없음";
+      if (activeCategory !== "all" && catalogItem?.category !== activeCategory) {
+        return false;
+      }
+      if (!normalizedQuery) {
+        return true;
+      }
+      return name.toLowerCase().includes(normalizedQuery) || String(item.itemCode).includes(normalizedQuery);
+    })
+    .sort((a, b) => compareGroupedCatalogItems(a.catalogItem, b.catalogItem, listCategory) || a.index - b.index);
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="item-picker inventory-review-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="아이템 확인"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="item-picker-header">
+          <div>
+            <h2>아이템 확인</h2>
+          </div>
+          <button type="button" className="secondary-button" onClick={onClose}>
+            닫기
+          </button>
+        </header>
+
+        <div className="item-picker-body">
+          <aside className="item-picker-sidebar">
+            <button
+              type="button"
+              className={activeCategory === "all" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveCategory("all")}
+            >
+              전체
+            </button>
+            <ItemCategoryFilterTabs
+              activeCategory={activeCategory}
+              onCategoryChange={(category) => setActiveCategory(category)}
+            />
+            <div className="picker-sidebar-divider" />
+            <button
+              type="button"
+              className={activeCategory === "manual" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveCategory("manual")}
+            >
+              수동 코드 입력
+            </button>
+          </aside>
+
+          <section className="item-picker-results">
+            {activeCategory === "manual" ? (
+              <ManualCodeInput
+                value={manualCode}
+                ariaLabel="수동 아이템 코드"
+                helpText="목록에 없는 아이템 코드를 직접 입력합니다."
+                confirmMessage="255를 넘는 아이템 코드입니다. 그래도 추가할까요?"
+                onChange={setManualCode}
+                onAdd={(code) => {
+                  onInventoryAdd({ code, name: "알 수 없음", category: "item" });
+                }}
+              />
+            ) : (
+              <>
+                <input
+                  className="item-picker-search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="이름 또는 코드 검색"
+                />
+                {draftInventory.length === 0 ? (
+                  <p className="empty compact">인벤토리가 비어있습니다.</p>
+                ) : filteredInventory.length === 0 ? (
+                  <p className="empty compact">필터에 맞는 항목이 없습니다.</p>
+                ) : (
+                  <div className="inventory-review-list">
+                    {filteredInventory.map(({ item, index, catalogItem }, itemIndex) => {
+                      const original = originalByCode.get(item.itemCode);
+                      const name = catalogItem?.name ?? original?.name ?? "알 수 없음";
+                      const stats = catalogItem ? getItemStatText(name) : `code ${item.itemCode}`;
+                      const groupLabel = getInventoryResultGroupLabel(catalogItem, listCategory);
+                      const previousGroupLabel =
+                        itemIndex > 0 ? getInventoryResultGroupLabel(filteredInventory[itemIndex - 1].catalogItem, listCategory) : null;
+                      const showGroupDivider = groupLabel !== null && groupLabel !== previousGroupLabel;
+                      return (
+                  <React.Fragment key={`${item.itemCode}-${index}`}>
+                    {showGroupDivider ? <div className="item-group-divider inventory-group-divider">{groupLabel}</div> : null}
+                          <div className="inventory-entry">
+                            <div className="inventory-row">
+                              <ItemIcon item={catalogItem ?? { code: item.itemCode, unknown: true }} />
+                              <div className="inventory-row-main">
+                                <strong>{name}</strong>
+                                {stats ? <small className="item-stat-text">{stats}</small> : null}
+                              </div>
+                              <input
+                                aria-label={`${name} 수량`}
+                                inputMode="numeric"
+                                value={item.quantity}
+                                onChange={(event) => onInventoryChange(index, event.target.value)}
+                                placeholder="0"
+                                min={0}
+                                max={99}
+                                disabled={!supported}
+                              />
+                              <button
+                                type="button"
+                                className="danger-button"
+                                onClick={() => onInventoryDelete(index)}
+                                disabled={!supported}
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -636,7 +776,7 @@ function InventoryPicker({
       return true;
     }
     return item.name.toLowerCase().includes(normalizedQuery) || String(item.code).includes(normalizedQuery);
-  });
+  }).sort((a, b) => compareGroupedCatalogItems(a, b, activeCategory));
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -644,12 +784,12 @@ function InventoryPicker({
         className="item-picker"
         role="dialog"
         aria-modal="true"
-        aria-label="인벤토리 항목 추가"
+        aria-label="아이템 추가"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="item-picker-header">
           <div>
-            <h2>인벤토리 항목 추가</h2>
+            <h2>아이템 추가</h2>
           </div>
           <button type="button" className="secondary-button" onClick={onClose}>
             닫기
@@ -665,16 +805,10 @@ function InventoryPicker({
             >
               전체
             </button>
-            {inventoryCategoryOptions.map((category) => (
-              <button
-                key={category.key}
-                type="button"
-                className={activeCategory === category.key ? "picker-tab active" : "picker-tab"}
-                onClick={() => setActiveCategory(category.key)}
-              >
-                {category.label}
-              </button>
-            ))}
+            <ItemCategoryFilterTabs
+              activeCategory={activeCategory}
+              onCategoryChange={(category) => setActiveCategory(category)}
+            />
           </aside>
 
           <section className="item-picker-results">
@@ -684,27 +818,117 @@ function InventoryPicker({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="이름 또는 코드 검색"
             />
-            <div className="item-picker-list">
-              {items.map((item) => {
+            <div className="item-picker-list inventory-picker-list">
+              {items.map((item, index) => {
                 const alreadyAdded = currentItemCodes.includes(item.code);
+                const stats = getItemStatText(item.name);
+                const groupLabel = getInventoryResultGroupLabel(item, activeCategory);
+                const previousGroupLabel = index > 0 ? getInventoryResultGroupLabel(items[index - 1], activeCategory) : null;
+                const showGroupDivider = groupLabel !== null && groupLabel !== previousGroupLabel;
                 return (
-                  <button
-                    key={`${item.category}-${item.code}`}
-                    type="button"
-                    className={alreadyAdded ? "item-picker-row disabled" : "item-picker-row"}
-                    onClick={() => {
-                      if (alreadyAdded) {
-                        window.alert("이미 인벤토리에 추가된 항목입니다.");
-                        return;
-                      }
-                      onAdd(item);
-                    }}
-                  >
-                    <span>{item.name}</span>
-                    <small>
-                      {getInventoryCategoryLabel(item.category)} / {item.code}
-                    </small>
-                  </button>
+                  <React.Fragment key={`${item.category}-${item.code}`}>
+                    {showGroupDivider ? <div className="item-group-divider picker-group-divider">{groupLabel}</div> : null}
+                    <button
+                      type="button"
+                      className={alreadyAdded ? "item-picker-row inventory-item-row disabled" : "item-picker-row inventory-item-row"}
+                      onClick={() => {
+                        if (alreadyAdded) {
+                          window.alert("이미 인벤토리에 추가된 항목입니다.");
+                          return;
+                        }
+                        onAdd(item);
+                      }}
+                    >
+                      <ItemIcon item={item} />
+                      <span className="item-picker-main">
+                        <span className="item-picker-name">{item.name}</span>
+                        {stats ? <small className="item-stat-text">{stats}</small> : null}
+                      </span>
+                      <small className="item-picker-code">{item.code}</small>
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ItemInfoModal({ onClose }: { onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<PickerCategory>("all");
+  const normalizedQuery = query.trim().toLowerCase();
+  const items = INVENTORY_CATALOG.filter((item) => {
+    if (activeCategory !== "all" && item.category !== activeCategory) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+    return item.name.toLowerCase().includes(normalizedQuery) || String(item.code).includes(normalizedQuery);
+  }).sort((a, b) => compareGroupedCatalogItems(a, b, activeCategory));
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="item-picker"
+        role="dialog"
+        aria-modal="true"
+        aria-label="아이템 정보"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="item-picker-header">
+          <div>
+            <h2>아이템 정보</h2>
+          </div>
+          <button type="button" className="secondary-button" onClick={onClose}>
+            닫기
+          </button>
+        </header>
+
+        <div className="item-picker-body">
+          <aside className="item-picker-sidebar">
+            <button
+              type="button"
+              className={activeCategory === "all" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveCategory("all")}
+            >
+              전체
+            </button>
+            <ItemCategoryFilterTabs
+              activeCategory={activeCategory}
+              onCategoryChange={(category) => setActiveCategory(category)}
+            />
+          </aside>
+
+          <section className="item-picker-results">
+            <input
+              className="item-picker-search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="이름 또는 코드 검색"
+            />
+            <div className="item-picker-list inventory-picker-list">
+              {items.map((item, index) => {
+                const stats = getItemStatText(item.name);
+                const groupLabel = getInventoryResultGroupLabel(item, activeCategory);
+                const previousGroupLabel = index > 0 ? getInventoryResultGroupLabel(items[index - 1], activeCategory) : null;
+                const showGroupDivider = groupLabel !== null && groupLabel !== previousGroupLabel;
+                return (
+                  <React.Fragment key={`${item.category}-${item.code}`}>
+                    {showGroupDivider ? <div className="item-group-divider picker-group-divider">{groupLabel}</div> : null}
+                    <div className="item-picker-row inventory-item-row">
+                      <ItemIcon item={item} />
+                      <span className="item-picker-main">
+                        <span className="item-picker-name">{item.name}</span>
+                        {stats ? <small className="item-stat-text">{stats}</small> : null}
+                      </span>
+                      <small className="item-picker-code">{item.code}</small>
+                    </div>
+                  </React.Fragment>
                 );
               })}
             </div>
@@ -739,8 +963,7 @@ function PartyEditor({
     <article className="party-card">
       <div className="section-title">
         <div>
-          <span className="eyebrow">파티</span>
-          <h2>{party?.label ?? "파티 정보"}</h2>
+          <h2>파티</h2>
         </div>
         <strong>{codes.length}명</strong>
       </div>
@@ -949,6 +1172,7 @@ function EquipmentEditor({
   draftEquipment: Record<number, Record<EquipmentSlotKey, number>>;
   onChange: (characterCode: number, slot: EquipmentSlotKey, value: number) => void;
 }) {
+  const [pickerSlot, setPickerSlot] = useState<EquipmentSlotKey | null>(null);
   const equipmentByCode = useMemo(() => {
     return new Map(save?.equipment[scope].map((equipment) => [equipment.characterCode, equipment]) ?? []);
   }, [save, scope]);
@@ -982,21 +1206,32 @@ function EquipmentEditor({
             const slotInfo = currentEquipment.slots.find((item) => item.key === slot.key);
             const value = selectedDraft[slot.key] ?? slotInfo?.value ?? 0;
             const options = getEquipmentSelectOptions(slot.key, value);
+            const selectedOption = options.find((option) => option.code === value);
+            const isUnknownEquipment = !selectedOption || selectedOption.name === "현재 저장값";
+            const selectedName = value === 0 ? "장비 해제" : selectedOption?.name ?? "현재 저장값";
+            const selectedStats = value === 0 ? undefined : isUnknownEquipment ? `code ${value}` : getItemStatText(selectedName);
             return (
-              <label key={slot.key} className="equipment-field">
-                <span>{slot.label}</span>
-                <select
-                  value={value}
-                  onChange={(event) => onChange(currentEquipment.characterCode, slot.key, Number(event.target.value))}
-                >
-                  {options.map((option) => (
-                    <option key={option.code} value={option.code}>
-                      {option.name} ({option.code})
-                    </option>
-                  ))}
-                </select>
-                <small>{slotInfo ? `offset 0x${toHex(slotInfo.offset, 4)} / ${slotInfo.raw}` : ""}</small>
-              </label>
+              <div key={slot.key} className="equipment-entry">
+                <small className="equipment-slot-label">{slot.label}</small>
+                <div className="equipment-row">
+                  <ItemIcon
+                    item={
+                      value === 0
+                        ? { code: 0, category: slot.key }
+                        : selectedOption && !isUnknownEquipment
+                          ? { ...selectedOption, category: slot.key }
+                          : { code: value, category: slot.key, unknown: true }
+                    }
+                  />
+                  <div className="equipment-row-main">
+                    <strong>{selectedName}</strong>
+                    {selectedStats ? <small className="item-stat-text">{selectedStats}</small> : null}
+                  </div>
+                  <button type="button" className="equipment-change-button" onClick={() => setPickerSlot(slot.key)}>
+                    변경
+                  </button>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -1005,7 +1240,226 @@ function EquipmentEditor({
           <small>{currentEquipment.note ?? "이 캐릭터의 장비 위치는 아직 확인되지 않았습니다."}</small>
         </div>
       )}
+
+      {pickerSlot && currentEquipment?.supported && selectedDraft ? (
+        <EquipmentPicker
+          slotKey={pickerSlot}
+          currentValue={selectedDraft[pickerSlot] ?? 0}
+          onClose={() => setPickerSlot(null)}
+          onSelect={(value) => {
+            onChange(currentEquipment.characterCode, pickerSlot, value);
+            setPickerSlot(null);
+          }}
+        />
+      ) : null}
     </article>
+  );
+}
+
+type EquipmentPickerItem = {
+  code: number;
+  name: string;
+  category: InventoryItemCategory | null;
+  weaponKind?: WeaponKind;
+  consumableKind?: ConsumableKind;
+  unknown?: boolean;
+};
+
+type PickerCategory = InventoryItemCategory | "all";
+type EquipmentPickerCategory = PickerCategory | "manual";
+
+function EquipmentPicker({
+  slotKey,
+  currentValue,
+  onClose,
+  onSelect
+}: {
+  slotKey: EquipmentSlotKey;
+  currentValue: number;
+  onClose: () => void;
+  onSelect: (value: number) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<EquipmentPickerCategory>(slotKey);
+  const [manualCode, setManualCode] = useState("");
+  const slotLabel = EQUIPMENT_SLOT_DEFINITIONS.find((slot) => slot.key === slotKey)?.label ?? "장비";
+  const normalizedQuery = query.trim().toLowerCase();
+  const listCategory: PickerCategory = activeCategory === "manual" ? "all" : activeCategory;
+  const items = getEquipmentPickerItems(slotKey, currentValue).filter((item) => {
+    if (activeCategory === "manual") {
+      return false;
+    }
+    if (activeCategory !== "all" && item.category !== null && item.category !== activeCategory) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+    return item.name.toLowerCase().includes(normalizedQuery) || String(item.code).includes(normalizedQuery);
+  }).sort((a, b) => compareGroupedCatalogItems(a, b, listCategory));
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="item-picker"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${slotLabel} 변경`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="item-picker-header">
+          <div>
+            <h2>{slotLabel} 변경</h2>
+          </div>
+          <button type="button" className="secondary-button" onClick={onClose}>
+            닫기
+          </button>
+        </header>
+
+        <div className="item-picker-body">
+          <aside className="item-picker-sidebar">
+            <button
+              type="button"
+              className={activeCategory === "all" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveCategory("all")}
+            >
+              전체
+            </button>
+            <ItemCategoryFilterTabs
+              activeCategory={activeCategory}
+              onCategoryChange={(category) => setActiveCategory(category)}
+            />
+            <div className="picker-sidebar-divider" />
+            <button
+              type="button"
+              className={activeCategory === "manual" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveCategory("manual")}
+            >
+              수동 코드 입력
+            </button>
+          </aside>
+
+          <section className="item-picker-results">
+            {activeCategory === "manual" ? (
+              <ManualCodeInput
+                value={manualCode}
+                ariaLabel="수동 장비 코드"
+                helpText="목록에 없는 장비 코드를 직접 입력합니다."
+                confirmMessage="255를 넘는 장비 코드입니다. 그래도 추가할까요?"
+                onChange={setManualCode}
+                onAdd={(code) => onSelect(code)}
+              />
+            ) : (
+              <>
+                <input
+                  className="item-picker-search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="이름 또는 코드 검색"
+                />
+                <div className="item-picker-list inventory-picker-list">
+                  {items.map((item, index) => {
+                    const selected = item.code === currentValue;
+                    const stats = item.unknown ? `code ${item.code}` : getItemStatText(item.name);
+                    const groupLabel = getInventoryResultGroupLabel(item, listCategory);
+                    const previousGroupLabel = index > 0 ? getInventoryResultGroupLabel(items[index - 1], listCategory) : null;
+                    const showGroupDivider = groupLabel !== null && groupLabel !== previousGroupLabel;
+                    return (
+                      <React.Fragment key={`${item.category}-${item.code}`}>
+                        {showGroupDivider ? <div className="item-group-divider picker-group-divider">{groupLabel}</div> : null}
+                        <button
+                          type="button"
+                          className={selected ? "item-picker-row inventory-item-row disabled" : "item-picker-row inventory-item-row"}
+                          onClick={() => {
+                            if (selected) {
+                              return;
+                            }
+                            if (item.category !== null && item.category !== slotKey) {
+                              const expectedLabel = getInventoryCategoryLabel(slotKey);
+                              const actualLabel = getInventoryCategoryLabel(item.category);
+                              const approved = window.confirm(
+                                `${slotLabel} 슬롯에 ${actualLabel} 항목을 선택했습니다. ${expectedLabel} 항목이 아니어도 변경할까요?`
+                              );
+                              if (!approved) {
+                                return;
+                              }
+                            }
+                            onSelect(item.code);
+                          }}
+                        >
+                          <ItemIcon item={item} />
+                          <span className="item-picker-main">
+                            <span className="item-picker-name">{item.name}</span>
+                            {stats ? <small className="item-stat-text">{stats}</small> : null}
+                          </span>
+                          <small className="item-picker-code">{item.code}</small>
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ManualCodeInput({
+  value,
+  ariaLabel,
+  helpText,
+  confirmMessage,
+  onChange,
+  onAdd
+}: {
+  value: string;
+  ariaLabel: string;
+  helpText: string;
+  confirmMessage: string;
+  onChange: (value: string) => void;
+  onAdd: (code: number) => void;
+}) {
+  const trimmedValue = value.trim();
+  const parsedCode = Number(trimmedValue);
+  const canAdd = trimmedValue.length > 0 && Number.isInteger(parsedCode) && parsedCode >= 0 && parsedCode <= 0xffff;
+  return (
+    <div className="manual-code-panel">
+      <div className="manual-code-editor">
+        <ItemIcon item={{ unknown: true }} />
+        <input
+          aria-label={ariaLabel}
+          inputMode="numeric"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="0~255"
+        />
+      </div>
+      <button
+        type="button"
+        className="inventory-add-button"
+        disabled={!canAdd}
+        onClick={() => {
+          if (!canAdd) {
+            return;
+          }
+
+          if (parsedCode > 255) {
+            const approved = window.confirm(confirmMessage);
+            if (!approved) {
+              return;
+            }
+          }
+
+          onAdd(parsedCode);
+        }}
+      >
+        추가
+      </button>
+      <small className="manual-code-help">{helpText}</small>
+    </div>
   );
 }
 
@@ -1053,11 +1507,6 @@ function MercenaryEditor({
               <span>{getMercenaryName(value)}</span>
               <small>{value}</small>
             </button>
-            <small>
-              {typeof currentMercenary.offset === "number" && currentMercenary.raw
-                ? `offset 0x${toHex(currentMercenary.offset, 4)} / ${currentMercenary.raw}`
-                : ""}
-            </small>
           </div>
         </div>
       ) : (
@@ -1066,7 +1515,7 @@ function MercenaryEditor({
         </div>
       )}
 
-      {pickerOpen && currentMercenary ? (
+      {pickerOpen && currentMercenary?.supported ? (
         <MercenaryPicker
           currentValue={value}
           onClose={() => setPickerOpen(false)}
@@ -1150,12 +1599,168 @@ function MercenaryPicker({
   );
 }
 
-function getEquipmentSelectOptions(slot: EquipmentSlotKey, currentValue: number): Array<{ code: number; name: string }> {
+function ItemIcon({
+  item
+}: {
+  item?: {
+    code?: number;
+    category?: InventoryItemCategory | null;
+    weaponKind?: WeaponKind;
+    consumableKind?: ConsumableKind;
+    unknown?: boolean;
+  } | null;
+}) {
+  const src = getItemIconSrc(item);
+  const className = item?.code === 0 ? "item-icon-slot empty-equipment" : "item-icon-slot";
+  return (
+    <span className={className} aria-hidden="true">
+      {src ? <img src={src} alt="" /> : null}
+    </span>
+  );
+}
+
+function ItemCategoryFilterTabs({
+  activeCategory,
+  onCategoryChange
+}: {
+  activeCategory: PickerCategory | "manual";
+  onCategoryChange: (category: InventoryItemCategory) => void;
+}) {
+  return (
+    <>
+      {inventoryCategoryOptions.map((category) => (
+        <button
+          key={category.key}
+          type="button"
+          className={activeCategory === category.key ? "picker-tab active" : "picker-tab"}
+          onClick={() => onCategoryChange(category.key)}
+        >
+          {category.label}
+        </button>
+      ))}
+    </>
+  );
+}
+
+function getItemIconSrc(
+  item?: {
+    code?: number;
+    category?: InventoryItemCategory | null;
+    weaponKind?: WeaponKind;
+    consumableKind?: ConsumableKind;
+    unknown?: boolean;
+  } | null
+): string | undefined {
+  if (item?.unknown) {
+    return "/item-icons/unknown.png";
+  }
+  if (item?.weaponKind === "sword") {
+    return "/item-icons/sword.png";
+  }
+  if (item?.weaponKind === "booster") {
+    return "/item-icons/booster.png";
+  }
+  if (item?.weaponKind === "gun-slicer") {
+    return "/item-icons/gun-slicer.png";
+  }
+  if (item?.weaponKind === "handgun") {
+    return "/item-icons/handgun.png";
+  }
+  if (item?.weaponKind === "cigar") {
+    return "/item-icons/cigar.png";
+  }
+  if (item?.weaponKind === "greatsword") {
+    return "/item-icons/greatsword.png";
+  }
+  if (item?.weaponKind === "ribbon") {
+    return "/item-icons/ribbon.png";
+  }
+  if (item?.weaponKind === "camera-lens") {
+    return "/item-icons/camera-lens.png";
+  }
+  if (item?.weaponKind === "claw") {
+    return "/item-icons/claw.png";
+  }
+  if (item?.weaponKind === "yoyo") {
+    return "/item-icons/yoyo.png";
+  }
+  if (item?.weaponKind === "bottle") {
+    return "/item-icons/bottle.png";
+  }
+  if (item?.consumableKind === "potion") {
+    return "/item-icons/potion.png";
+  }
+  if (item?.consumableKind === "first-aid") {
+    return "/item-icons/first-aid.png";
+  }
+  if (item?.consumableKind === "poison") {
+    return "/item-icons/poison.png";
+  }
+  if (item?.consumableKind === "bomb") {
+    return "/item-icons/bomb.png";
+  }
+  if (item?.category === "armor") {
+    return "/item-icons/armor.png";
+  }
+  if (item?.category === "necklace") {
+    return "/item-icons/necklace.png";
+  }
+  if (item?.category === "ring") {
+    return "/item-icons/ring.png";
+  }
+  if (item?.category === "belt") {
+    return "/item-icons/belt.png";
+  }
+  if (item?.category === "shoes") {
+    return "/item-icons/shoes.png";
+  }
+  return item ? "/item-icons/unknown.png" : undefined;
+}
+
+function getEquipmentSelectOptions(slot: EquipmentSlotKey, currentValue: number): EquipmentOption[] {
   const options = EQUIPMENT_OPTIONS[slot];
   if (options.some((option) => option.code === currentValue)) {
     return options;
   }
   return [{ code: currentValue, name: "현재 저장값" }, ...options];
+}
+
+function getEquipmentPickerItems(slot: EquipmentSlotKey, currentValue: number): EquipmentPickerItem[] {
+  const items = new Map<string, EquipmentPickerItem>();
+  const addItem = (item: EquipmentPickerItem) => {
+    items.set(`${item.category}-${item.code}`, item);
+  };
+
+  addItem({ code: 0, name: "장비 해제", category: null });
+  for (const item of INVENTORY_CATALOG) {
+    addItem(item);
+  }
+
+  if (![...items.values()].some((item) => item.code === currentValue)) {
+    const currentOption = getEquipmentSelectOptions(slot, currentValue).find((option) => option.code === currentValue);
+    addItem({
+      code: currentValue,
+      name: currentOption?.name ?? "현재 저장값",
+      category: slot,
+      weaponKind: currentOption?.weaponKind,
+      unknown: !currentOption || currentOption.name === "현재 저장값"
+    });
+  }
+
+  return [...items.values()].sort((a, b) => {
+    const leftCategory = a.category;
+    const rightCategory = b.category;
+    if (leftCategory === null && rightCategory !== null) {
+      return -1;
+    }
+    if (leftCategory !== null && rightCategory === null) {
+      return 1;
+    }
+    if (leftCategory !== null && rightCategory !== null && leftCategory !== rightCategory) {
+      return leftCategory.localeCompare(rightCategory);
+    }
+    return a.code - b.code;
+  });
 }
 
 function getMercenaryOptions(currentValue: number): Array<{ code: number; name: string }> {
@@ -1170,22 +1775,29 @@ function getMercenaryName(value: number): string {
 }
 
 function buildUnsupportedEquipment(characterCode: number, scope: EquipmentScope): CharacterEquipmentInfo {
+  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   return {
     characterCode,
-    characterName: CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`,
+    characterName,
     scope,
     supported: false,
-    note: "장비 오프셋이 확인되지 않았습니다.",
+    note: getCharacterGroup(characterName) === "arena"
+          ? "아레나 캐릭터의 정보는 세이브 파일에 기록되지 않습니다."
+          : "장비 오프셋이 확인되지 않았습니다.",
     slots: []
   };
 }
 
 function buildUnsupportedMercenary(characterCode: number): CharacterMercenaryInfo {
+  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   return {
     characterCode,
-    characterName: CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`,
+    characterName,
     supported: false,
-    note: "용병단 오프셋이 확인되지 않았습니다."
+    note:
+      getCharacterGroup(characterName) === "arena"
+        ? "아레나 캐릭터의 정보는 세이브 파일에 기록되지 않습니다."
+        : "용병단 오프셋이 확인되지 않았습니다."
   };
 }
 
@@ -1315,8 +1927,77 @@ const inventoryCategoryOptions: Array<{ key: InventoryItemCategory; label: strin
   { key: "item", label: "소모품" }
 ];
 
+const weaponKindOptions: WeaponKind[] = [
+  "gun-slicer",
+  "greatsword",
+  "handgun",
+  "cigar",
+  "claw",
+  "sword",
+  "booster",
+  "ribbon",
+  "camera-lens",
+  "bottle",
+  "yoyo"
+];
+
+const consumableKindOptions: ConsumableKind[] = ["potion", "first-aid", "poison", "bomb"];
+
 function getInventoryCategoryLabel(category: InventoryItemCategory): string {
   return inventoryCategoryOptions.find((item) => item.key === category)?.label ?? "항목";
+}
+
+type GroupableCatalogItem = {
+  code: number;
+  category?: InventoryItemCategory | null;
+  weaponKind?: WeaponKind;
+  consumableKind?: ConsumableKind;
+};
+
+function getInventoryResultGroupLabel(
+  item: GroupableCatalogItem | undefined | null,
+  activeCategory: PickerCategory
+): string | null {
+  if (activeCategory === "weapon" && item?.category === "weapon") {
+    return WEAPON_KIND_LABELS[item.weaponKind ?? "unknown"];
+  }
+  if (activeCategory === "item" && item?.category === "item" && item.consumableKind) {
+    return CONSUMABLE_KIND_LABELS[item.consumableKind];
+  }
+  return null;
+}
+
+function compareGroupedCatalogItems(
+  left: GroupableCatalogItem | undefined | null,
+  right: GroupableCatalogItem | undefined | null,
+  activeCategory: PickerCategory
+): number {
+  if (activeCategory !== "weapon" && activeCategory !== "item") {
+    return 0;
+  }
+  if (left?.category === null && right?.category !== null) {
+    return -1;
+  }
+  if (left?.category !== null && right?.category === null) {
+    return 1;
+  }
+  const groupCompare = getCatalogGroupRank(left, activeCategory) - getCatalogGroupRank(right, activeCategory);
+  if (groupCompare !== 0) {
+    return groupCompare;
+  }
+  return (left?.code ?? 0) - (right?.code ?? 0);
+}
+
+function getCatalogGroupRank(item: GroupableCatalogItem | undefined | null, activeCategory: PickerCategory): number {
+  if (activeCategory === "weapon" && item?.category === "weapon") {
+    const rank = weaponKindOptions.indexOf(item.weaponKind ?? "unknown");
+    return rank >= 0 ? rank : weaponKindOptions.length;
+  }
+  if (activeCategory === "item" && item?.category === "item" && item.consumableKind) {
+    const rank = consumableKindOptions.indexOf(item.consumableKind);
+    return rank >= 0 ? rank : consumableKindOptions.length;
+  }
+  return -1;
 }
 
 function getCatalogItem(itemCode: number): InventoryCatalogItem | undefined {
