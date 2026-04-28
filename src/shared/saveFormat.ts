@@ -20,6 +20,7 @@ export type MoneyInfo = {
   offset: number;
   value: number;
   raw: string;
+  supported: boolean;
 };
 
 export type InventoryItemKey =
@@ -46,6 +47,7 @@ export type InventoryItemInfo = {
 
 export type EquipmentSlotKey = "weapon" | "armor" | "necklace" | "ring" | "belt" | "shoes";
 export type EquipmentScope = "field" | "battle";
+export type SaveDataScope = EquipmentScope;
 export type InventoryItemCategory = EquipmentSlotKey | "item";
 export type WeaponKind =
   | "gun-slicer"
@@ -61,7 +63,7 @@ export type WeaponKind =
   | "yoyo"
   | "asura"
   | "unknown";
-export type ConsumableKind = "potion" | "first-aid" | "poison" | "bomb";
+export type ConsumableKind = "potion" | "first-aid" | "poison" | "bomb" | "green-liquid";
 
 export const WEAPON_KIND_LABELS: Record<WeaponKind, string> = {
   "gun-slicer": "건 슬라이서",
@@ -83,7 +85,8 @@ export const CONSUMABLE_KIND_LABELS: Record<ConsumableKind, string> = {
   potion: "포션",
   "first-aid": "구급상자",
   poison: "독약",
-  bomb: "폭탄"
+  bomb: "폭탄",
+  "green-liquid": "녹색 폭탄"
 };
 
 export type EquipmentOption = {
@@ -138,6 +141,11 @@ export type CharacterEquipmentInfo = {
   scope: EquipmentScope;
   supported: boolean;
   note?: string;
+  face?: CharacterWeaponDetailInfo;
+  name?: CharacterWeaponDetailInfo;
+  job?: CharacterWeaponDetailInfo;
+  voice?: CharacterWeaponDetailInfo;
+  body?: CharacterWeaponDetailInfo;
   weaponAttackType?: CharacterWeaponDetailInfo;
   weaponPicType?: CharacterWeaponDetailInfo;
   weaponType?: CharacterWeaponDetailInfo;
@@ -179,9 +187,9 @@ export type SaveInfo = {
     calculated: number;
     ok: boolean;
   };
-  money: Record<EpisodeKey, MoneyInfo>;
-  inventory: Record<EpisodeKey, Record<InventoryItemKey, InventoryItemInfo>>;
-  inventorySlots: Record<EpisodeKey, InventorySlotInfo[]>;
+  money: Record<SaveDataScope, Record<EpisodeKey, MoneyInfo>>;
+  inventory: Record<SaveDataScope, Record<EpisodeKey, Record<InventoryItemKey, InventoryItemInfo>>>;
+  inventorySlots: Record<SaveDataScope, Record<EpisodeKey, InventorySlotInfo[]>>;
   parties: Record<EpisodeKey, PartyInfo>;
   equipment: Record<EquipmentScope, CharacterEquipmentInfo[]>;
   mercenaries: Record<EquipmentScope, CharacterMercenaryInfo[]>;
@@ -190,6 +198,11 @@ export type SaveInfo = {
 export type CharacterEquipmentEdit = {
   characterCode: number;
   scope: EquipmentScope;
+  face?: number;
+  name?: number;
+  job?: number;
+  voice?: number;
+  body?: number;
   weaponAttackType?: number;
   weaponPicType?: number;
   weaponType?: number;
@@ -203,13 +216,15 @@ export type CharacterMercenaryEdit = {
 };
 
 export type SaveEditRequest = {
-  money: Record<EpisodeKey, number>;
-  inventory?: Partial<Record<EpisodeKey, Partial<Record<InventoryItemKey, number>>>>;
-  inventorySlots?: Partial<Record<EpisodeKey, InventorySlotEdit[]>>;
+  money: Record<SaveDataScope, Record<EpisodeKey, number>>;
+  inventory?: Partial<Record<SaveDataScope, Partial<Record<EpisodeKey, Partial<Record<InventoryItemKey, number>>>>>>;
+  inventorySlots?: Partial<Record<SaveDataScope, Partial<Record<EpisodeKey, InventorySlotEdit[]>>>>;
   parties: Record<EpisodeKey, number[]>;
   equipment?: CharacterEquipmentEdit[];
   mercenaries?: CharacterMercenaryEdit[];
 };
+
+type InventoryTable = { startOffset: number; countOffset: number };
 
 export const MONEY_OFFSETS: Record<EpisodeKey, { label: string; offset: number }> = {
   episode4: { label: "에피소드4 / 영혼의 검", offset: 0x63f8 },
@@ -228,7 +243,7 @@ export const INVENTORY_ITEM_DEFINITIONS: Record<InventoryItemKey, { name: string
   gift: { name: "기프트", itemCode: 225 }
 };
 
-export const INVENTORY_TABLES: Record<EpisodeKey, { startOffset: number; countOffset: number }> = {
+export const INVENTORY_TABLES: Record<EpisodeKey, InventoryTable> = {
   episode4: {
     startOffset: 0x63fc,
     countOffset: 0x63f4
@@ -238,6 +253,21 @@ export const INVENTORY_TABLES: Record<EpisodeKey, { startOffset: number; countOf
     countOffset: 0x74a4
   }
 };
+
+const BATTLE_INVENTORY_TABLES = {
+  episode4: {
+    startOffset: 0xada3,
+    countOffset: 0xad9b
+  },
+  episode5InEpisode4Battle: {
+    startOffset: 0xbe53,
+    countOffset: 0xbe4b
+  },
+  episode5: {
+    startOffset: 0xbe49,
+    countOffset: 0xbe41
+  }
+} satisfies Record<string, InventoryTable>;
 
 export const PARTY_OFFSETS: Record<EpisodeKey, { label: string; offset: number }> = {
   episode4: { label: "영혼의 검", offset: 0x62f0 },
@@ -287,20 +317,21 @@ export const CHARACTER_NAMES = new Map<number, string>([
   [222, "란"],
   [223, "베라모드"],
   [236, "네리사"],
-  [237, "에피소드4 데미안"],
-  [238, "에피소드4 디에네"],
+  [237, "데미안 (에피소드4)"],
+  [238, "디에네 (에피소드4)"],
+  [239, "진"],
   [240, "루시엔"],
   [241, "리차드"],
-  [242, "에피소드5 디에네"],
+  [242, "디에네 (에피소드5)"],
   [243, "마리아"],
   [244, "유진"],
   [245, "샤크바리"],
-  [246, "에피소드4 루크랜서드"],
+  [246, "루크랜서드 (에피소드4)"],
   [247, "엠블라"],
   [365, "아레나 베라모드"],
   [398, "리엔"],
-  [427, "에피소드5 데미안"],
-  [484, "에피소드5 루크랜서드"],
+  [427, "데미안 (에피소드5)"],
+  [484, "루크랜서드 (에피소드5)"],
   [563, "나야트레이"],
   [594, "아레나 슈"],
   [598, "아레나 흑태자"],
@@ -371,6 +402,243 @@ export const WEAPON_ATTACK_TYPE_OPTIONS: Array<{ code: number; name: string }> =
   { code: 1, name: "근거리공격" },
   { code: 6, name: "원거리공격" },
   { code: 1479, name: "부스터" }
+];
+
+export const CHARACTER_FACE_OPTIONS: Array<{ code: number; name: string }> = [
+  { code: 0, name: "없음" },
+  { code: 229, name: "UNKNOWN" },
+  { code: 362, name: "아돌" },
+  { code: 364, name: "필그림(여)" },
+  { code: 408, name: "카렐라" },
+  { code: 433, name: "제이슨" },
+  { code: 454, name: "아지다하카" },
+  { code: 573, name: "칼리오페" },
+  { code: 574, name: "이반" },
+  { code: 655, name: "네리사" },
+  { code: 656, name: "디에네" },
+  { code: 657, name: "데미안" },
+  { code: 658, name: "란" },
+  { code: 659, name: "레드헤드" },
+  { code: 668, name: "리엔" },
+  { code: 669, name: "리차드" },
+  { code: 671, name: "마리아" },
+  { code: 672, name: "바룬" },
+  { code: 673, name: "베라모드" },
+  { code: 674, name: "살라딘" },
+  { code: 675, name: "샤크바리" },
+  { code: 676, name: "아셀라스" },
+  { code: 677, name: "아슈레이" },
+  { code: 679, name: "엠블라" },
+  { code: 685, name: "죠안" },
+  { code: 686, name: "카를로스" },
+  { code: 688, name: "크리스티앙" },
+  { code: 751, name: "루크랜서드" },
+  { code: 756, name: "유진" },
+  { code: 759, name: "아만딘" },
+  { code: 762, name: "진" },
+  { code: 766, name: "슈" },
+  { code: 781, name: "손나딘" },
+  { code: 789, name: "루시엔" },
+  { code: 974, name: "나탈리" },
+  { code: 1047, name: "유블레인" },
+  { code: 1052, name: "하이델룬" },
+  { code: 1078, name: "해커" },
+  { code: 1080, name: "스턴(코어헌터)" },
+  { code: 1081, name: "로브" },
+  { code: 1082, name: "루칼드" },
+  { code: 1084, name: "로드" },
+  { code: 1085, name: "아델룬" },
+  { code: 1086, name: "켄" },
+  { code: 1087, name: "해적" },
+  { code: 1088, name: "엘더마스터" },
+  { code: 1089, name: "광신도" },
+  { code: 1092, name: "무녀" },
+  { code: 1101, name: "바루스" },
+  { code: 1110, name: "테오렐" },
+  { code: 1288, name: "나야트레이" },
+  { code: 2004, name: "우주말벌" },
+  { code: 2323, name: "슬라임3형제" }
+];
+
+export const CHARACTER_NAME_OPTIONS: Array<{ code: number; name: string }> = [
+  { code: 0, name: "없음" },
+  { code: 27, name: "나탈리" },
+  { code: 30, name: "네리사" },
+  { code: 228, name: "데미안" },
+  { code: 229, name: "디에네" },
+  { code: 437, name: "란" },
+  { code: 443, name: "레드헤드" },
+  { code: 449, name: "레제드람" },
+  { code: 450, name: "로브" },
+  { code: 451, name: "루시엔" },
+  { code: 452, name: "루칼드" },
+  { code: 455, name: "리벤" },
+  { code: 456, name: "리엔" },
+  { code: 458, name: "마리아" },
+  { code: 459, name: "리차드" },
+  { code: 460, name: "바룬" },
+  { code: 462, name: "베라모드" },
+  { code: 463, name: "살라딘" },
+  { code: 464, name: "손나딘" },
+  { code: 466, name: "아만딘" },
+  { code: 467, name: "아셀라스" },
+  { code: 468, name: "아슈레이" },
+  { code: 470, name: "엠블라" },
+  { code: 471, name: "유블레인" },
+  { code: 472, name: "유진" },
+  { code: 474, name: "제이슨" },
+  { code: 475, name: "죠안" },
+  { code: 477, name: "카를로스" },
+  { code: 478, name: "칼리오페" },
+  { code: 479, name: "크리스티앙" },
+  { code: 480, name: "테오렐" },
+  { code: 1692, name: "루크랜서드" },
+  { code: 1898, name: "슈" },
+  { code: 1899, name: "진" },
+  { code: 1943, name: "샤크바리" },
+  { code: 1999, name: "하이델룬" },
+  { code: 2392, name: "젠" },
+  { code: 2423, name: "슈로 위장한 진" },
+  { code: 2567, name: "나야트레이" },
+];
+
+export const CHARACTER_JOB_OPTIONS: Array<{ code: number; name: string }> = [
+  { code: 0, name: "없음" },
+  { code: 951, name: "코어 헌터" },
+  { code: 1219, name: "변충류" },
+  { code: 1291, name: "엑토플라즘" },
+  { code: 1292, name: "귀묘류" },
+  { code: 1293, name: "북두괴류" },
+  { code: 1294, name: "괴수령류" },
+  { code: 1295, name: "포유류" },
+  { code: 1296, name: "무직" },
+  { code: 1297, name: "우주해적" },
+  { code: 1399, name: "학생" },
+  { code: 1672, name: "젤류" },
+  { code: 1673, name: "세큐리티볼" },
+  { code: 1674, name: "스파이더" },
+  { code: 1675, name: "라이더" },
+  { code: 1679, name: "로드" },
+  { code: 1680, name: "제드" },
+  { code: 1681, name: "페이온" },
+  { code: 1685, name: "아델룬" },
+  { code: 1688, name: "술집주인" },
+  { code: 1747, name: "마스터" },
+  { code: 1897, name: "무녀" },
+  { code: 1986, name: "아벨리안" },
+  { code: 1987, name: "아르케 중앙군" },
+  { code: 1988, name: "기자" },
+  { code: 1989, name: "연구소장" },
+  { code: 1990, name: "루나스" },
+  { code: 1991, name: "길드리더" },
+  { code: 1992, name: "보좌관" },
+  { code: 1994, name: "베델" },
+  { code: 1995, name: "장교" },
+  { code: 1996, name: "해적" },
+  { code: 1997, name: "그레이팬텀" },
+  { code: 1998, name: "교주" },
+  { code: 2001, name: "하이델룬" },
+  { code: 2002, name: "팡테온 가드" },
+  { code: 2003, name: "전함승무원" },
+  { code: 2124, name: "구룡방원" },
+  { code: 2153, name: "주민" },
+  { code: 2244, name: "블랙스피어스" },
+  { code: 2245, name: "은빛갈기" },
+  { code: 2246, name: "길드원" },
+  { code: 2247, name: "발룬티어시민" },
+  { code: 2248, name: "슬럼주민" },
+  { code: 2250, name: "보아즈교도" },
+  { code: 2251, name: "연구원" },
+  { code: 2252, name: "해커" },
+  { code: 2253, name: "아벨리안" },
+  { code: 2254, name: "아벨리안교관" },
+  { code: 2255, name: "일반병사" },
+  { code: 2256, name: "글로리가드" },
+  { code: 2257, name: "베델친위대" },
+  { code: 2258, name: "안드로이드" },
+  { code: 2259, name: "강화아델룬" },
+  { code: 2347, name: "소매치기" }
+];
+
+export const CHARACTER_VOICE_OPTIONS: Array<{ code: number; name: string }> = [
+  { code: 0, name: "없음" },
+  { code: 1, name: "죠안" },
+  { code: 2, name: "제이슨" },
+  { code: 3, name: "블랙스피어스(해골, 유령)" },
+  { code: 4, name: "해적" },
+  { code: 5, name: "진(슈)" },
+  { code: 6, name: "아만딘" },
+  { code: 7, name: "칼리오페" },
+  { code: 11, name: "나야트레이" },
+  { code: 12, name: "나탈리" },
+  { code: 13, name: "네리사" },
+  { code: 14, name: "데미안" },
+  { code: 15, name: "디에네" },
+  { code: 16, name: "레드헤드" },
+  { code: 17, name: "루시엔" },
+  { code: 18, name: "루크랜서드" },
+  { code: 19, name: "리엔" },
+  { code: 20, name: "리차드" },
+  { code: 21, name: "마리아" },
+  { code: 22, name: "베라모드" },
+  { code: 23, name: "살라딘" },
+  { code: 24, name: "샤크바리" },
+  { code: 25, name: "아셀라스" },
+  { code: 26, name: "엠블라" },
+  { code: 27, name: "유진" },
+  { code: 28, name: "카를로스" },
+  { code: 30, name: "란" },
+  { code: 32, name: "크리스티앙" },
+  { code: 33, name: "하이델룬" },
+  { code: 34, name: "아슈레이" },
+  { code: 35, name: "베라모드 (마에라드)" },
+  { code: 36, name: "현혹령" },
+  { code: 37, name: "쥰코" },
+  { code: 38, name: "아수라수호신" }
+];
+
+export const CHARACTER_BODY_OPTIONS: Array<{ code: number; name: string }> = [
+  { code: 0, name: "없음" },
+  { code: 55, name: "아셀라스" },
+  { code: 62, name: "대화모습 (죠안, 보통)" },
+  { code: 63, name: "대화모습 (크리스티앙, 보통)" },
+  { code: 202, name: "샤크바리" },
+  { code: 256, name: "데미안" },
+  { code: 323, name: "크리스티앙" },
+  { code: 338, name: "죠안" },
+  { code: 347, name: "살라딘" },
+  { code: 368, name: "제이슨" },
+  { code: 392, name: "엠블라" },
+  { code: 506, name: "베라모드" },
+  { code: 507, name: "베라모드 (마에라드)" },
+  { code: 540, name: "칼리오페" },
+  { code: 567, name: "디에네 (에피소드4)" },
+  { code: 570, name: "란" },
+  { code: 572, name: "마리아" },
+  { code: 582, name: "리차드" },
+  { code: 597, name: "아슈레이" },
+  { code: 641, name: "카를로스" },
+  { code: 649, name: "루크랜서드" },
+  { code: 899, name: "네리사" },
+  { code: 900, name: "유진" },
+  { code: 903, name: "루시엔" },
+  { code: 1007, name: "아만딘" },
+  { code: 1017, name: "리엔" },
+  { code: 1096, name: "레드헤드" },
+  { code: 1165, name: "하이델룬" },
+  { code: 1166, name: "슈" },
+  { code: 1167, name: "진" },
+  { code: 1185, name: "살라딘 (커터칼)" },
+  { code: 1205, name: "디에네 (에피소드5)" },
+  { code: 1218, name: "나탈리" },
+  { code: 1259, name: "손나딘" },
+  { code: 1277, name: "나야트레이" },
+  { code: 1278, name: "유블레인" },
+  { code: 1306, name: "테오렐" },
+  { code: 1307, name: "레제드람" },
+  { code: 1308, name: "루칼드" },
+  { code: 1309, name: "로브" },
+  { code: 1310, name: "바룬" }
 ];
 
 export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, EquipmentOption[]> = {
@@ -463,11 +731,15 @@ export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, EquipmentOption[]> = {
     { code: 185, name: "골드 BAL", weaponKind: "gun-slicer" },
     { code: 208, name: "네리사의 마음", weaponKind: "ribbon" },
     { code: 209, name: "레인보우 리본", weaponKind: "ribbon" },
+    { code: 212, name: "컴바인 프리즘", weaponKind: "camera-lens" },
+    { code: 213, name: "오메가리 플렉터", weaponKind: "camera-lens" },
+    { code: 214, name: "베이그 렌즈", weaponKind: "camera-lens" },
     { code: 215, name: "캐츠시저", weaponKind: "claw" },
     { code: 216, name: "이글 네일", weaponKind: "claw" },
     { code: 217, name: "시가 보르도", weaponKind: "cigar" },
     { code: 221, name: "드래곤 스네일", weaponKind: "sword" },
     { code: 226, name: "로프란트 글로리", weaponKind: "sword" },
+    { code: 227, name: "가르시아 커스텀", weaponKind: "handgun" },
     
   ],
   armor: [
@@ -535,21 +807,26 @@ export const INVENTORY_CATALOG: InventoryCatalogItem[] = [
         weaponKind: option.weaponKind
       }))
   ),
+
+  { code: 107, name: "프레임쉘1", category: "item" as InventoryItemCategory, consumableKind: "green-liquid" as ConsumableKind },
+  { code: 113, name: "썬더아이스1", category: "item" as InventoryItemCategory, consumableKind: "green-liquid" as ConsumableKind },
+  { code: 116, name: "배틀포이즌1", category: "item" as InventoryItemCategory, consumableKind: "poison" as ConsumableKind },
+  { code: 117, name: "배틀포이즌2", category: "item" as InventoryItemCategory, consumableKind: "poison" as ConsumableKind },
+  { code: 118, name: "배틀포이즌3", category: "item" as InventoryItemCategory, consumableKind: "poison" as ConsumableKind },
   { code: 122, name: "로우캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
-  { code: 222, name: "미디엄캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
-  { code: 223, name: "하이캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
-  { code: 224, name: "빅캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
   { code: 123, name: "회복캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
   { code: 124, name: "완전회복캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
   { code: 125, name: "안정제", category: "item" as InventoryItemCategory, consumableKind: "first-aid" as ConsumableKind },
   { code: 126, name: "여신의 성수", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
-  { code: 225, name: "기프트", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
-  { code: 116, name: "배틀포이즌1", category: "item" as InventoryItemCategory, consumableKind: "poison" as ConsumableKind },
-  { code: 117, name: "배틀포이즌2", category: "item" as InventoryItemCategory, consumableKind: "poison" as ConsumableKind },
-  { code: 118, name: "배틀포이즌3", category: "item" as InventoryItemCategory, consumableKind: "poison" as ConsumableKind },
+  { code: 167, name: "파멸의 폭염1", category: "item" as InventoryItemCategory, consumableKind: "bomb" as ConsumableKind },
   { code: 168, name: "파멸의 폭염2", category: "item" as InventoryItemCategory, consumableKind: "bomb" as ConsumableKind },
   { code: 169, name: "라이징 스톰", category: "item" as InventoryItemCategory, consumableKind: "bomb" as ConsumableKind },
-  { code: 170, name: "애스트로 범", category: "item" as InventoryItemCategory, consumableKind: "bomb" as ConsumableKind }
+  { code: 170, name: "애스트로 범", category: "item" as InventoryItemCategory, consumableKind: "bomb" as ConsumableKind },
+  { code: 222, name: "미디엄캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 223, name: "하이캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 224, name: "빅캡슐", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 225, name: "기프트", category: "item" as InventoryItemCategory, consumableKind: "potion" as ConsumableKind },
+  { code: 228, name: "블리자드 캡슐", category: "item" as InventoryItemCategory, consumableKind: "bomb" as ConsumableKind }
 ].sort((a, b) => a.category.localeCompare(b.category) || a.code - b.code);
 
 export const MERCENARY_OPTIONS: Array<{ code: number; name: string }> = [
@@ -645,10 +922,17 @@ const FIELD_CHARACTER_CODE_RELATIVE_OFFSET = 0x0a4;
 const FIELD_MERCENARY_RELATIVE_OFFSET = 0x0bc;
 const FIELD_EQUIPMENT_RELATIVE_OFFSET = 0x0ec;
 const EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER = 0x48;
+const CHARACTER_NAME_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x46;
+const CHARACTER_SECOND_NAME_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x44;
+const CHARACTER_VOICE_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x42;
+const CHARACTER_BODY_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x40;
+const CHARACTER_FACE_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x3e;
+const CHARACTER_JOB_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x3c;
 const WEAPON_ATTACK_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x32;
 const WEAPON_PIC_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x04;
 const WEAPON_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x02;
 const BATTLE_MERCENARY_RELATIVE_OFFSET_FROM_CHARACTER = 0x18;
+const BATTLE_UNIT_SCAN_START_OFFSET = 0xe000;
 const FIELD_CHARACTER_RECORD_INDICES: Record<number, number> = {
   236: 0,
   237: 1,
@@ -697,13 +981,28 @@ export function parseSave(data: Uint8Array, filePath: string): SaveInfo {
       ok: storedChecksum === calculatedChecksum
     },
     money: {
-      episode4: readMoney(data, "episode4"),
-      episode5: readMoney(data, "episode5")
+      field: {
+        episode4: readMoney(data, "field", "episode4"),
+        episode5: readMoney(data, "field", "episode5")
+      },
+      battle: {
+        episode4: readMoney(data, "battle", "episode4"),
+        episode5: readMoney(data, "battle", "episode5")
+      }
     },
-    inventory: readInventory(data),
+    inventory: {
+      field: readInventory(data, "field"),
+      battle: readInventory(data, "battle")
+    },
     inventorySlots: {
-      episode4: readInventorySlots(data, "episode4"),
-      episode5: readInventorySlots(data, "episode5")
+      field: {
+        episode4: readInventorySlots(data, "field", "episode4"),
+        episode5: readInventorySlots(data, "field", "episode5")
+      },
+      battle: {
+        episode4: readInventorySlots(data, "battle", "episode4"),
+        episode5: readInventorySlots(data, "battle", "episode5")
+      }
     },
     parties: {
       episode4: readParty(data, "episode4"),
@@ -720,8 +1019,12 @@ export function parseSave(data: Uint8Array, filePath: string): SaveInfo {
   };
 }
 
-export function applyMoney(data: Uint8Array, episode: EpisodeKey, value: number): void {
-  writeInverseUint32(data, MONEY_OFFSETS[episode].offset, value);
+export function applyMoney(data: Uint8Array, scope: SaveDataScope, episode: EpisodeKey, value: number): void {
+  const target = getMoneyTarget(data, scope, episode);
+  if (!target) {
+    return;
+  }
+  writeInverseUint32(data, target.offset, value);
 }
 
 export function applyParty(data: Uint8Array, episode: EpisodeKey, codes: number[]): void {
@@ -742,8 +1045,10 @@ export function applyParty(data: Uint8Array, episode: EpisodeKey, codes: number[
 }
 
 export function applySaveEdits(data: Uint8Array, edits: SaveEditRequest): void {
-  applyMoney(data, "episode4", edits.money.episode4);
-  applyMoney(data, "episode5", edits.money.episode5);
+  applyMoney(data, "field", "episode4", edits.money.field.episode4);
+  applyMoney(data, "field", "episode5", edits.money.field.episode5);
+  applyMoney(data, "battle", "episode4", edits.money.battle.episode4);
+  applyMoney(data, "battle", "episode5", edits.money.battle.episode5);
   applyInventoryEdits(data, edits.inventory ?? {});
   applyInventorySlotEdits(data, edits.inventorySlots ?? {});
   applyParty(data, "episode4", edits.parties.episode4);
@@ -791,6 +1096,15 @@ function readSaveEpisode(data: Uint8Array): SaveInfo["episode"] {
 }
 
 function getSaveEpisodeLabel(data: Uint8Array): SaveEpisodeLabel {
+  if (readInverseUint32(data, 0x0c) === 1) {
+    if (hasPlausibleInventoryCount(data, BATTLE_INVENTORY_TABLES.episode4)) {
+      return "에피소드4";
+    }
+    if (hasPlausibleInventoryCount(data, BATTLE_INVENTORY_TABLES.episode5)) {
+      return "에피소드5";
+    }
+  }
+
   const episode5PartyCount = readInverseUint32(data, PARTY_OFFSETS.episode5.offset);
   if (episode5PartyCount > 0) {
     return "에피소드5";
@@ -821,46 +1135,117 @@ function getSaveTypeLabel(code: number): SaveTypeLabel {
   return "알 수 없음";
 }
 
-function readMoney(data: Uint8Array, episode: EpisodeKey): MoneyInfo {
-  const target = MONEY_OFFSETS[episode];
+function getEpisodeLabel(episode: EpisodeKey): string {
+  return episode === "episode5" ? "에피소드5" : "에피소드4";
+}
+
+function getMoneyTarget(
+  data: Uint8Array,
+  scope: SaveDataScope,
+  episode: EpisodeKey
+): { label: string; offset: number } | null {
+  if (scope === "field") {
+    return MONEY_OFFSETS[episode];
+  }
+
+  const table = getInventoryTable(data, scope, episode);
+  if (!table) {
+    return null;
+  }
+
+  return {
+    label: `${getEpisodeLabel(episode)} / 전투`,
+    offset: table.countOffset + 4
+  };
+}
+
+function getInventoryTable(data: Uint8Array, scope: SaveDataScope, episode: EpisodeKey): InventoryTable | null {
+  if (scope === "field") {
+    return isInventoryTableInRange(data, INVENTORY_TABLES[episode]) ? INVENTORY_TABLES[episode] : null;
+  }
+
+  if (readInverseUint32(data, 0x0c) !== 1) {
+    return null;
+  }
+
+  const activeEpisode = getActiveEpisodeKey(data);
+  if (episode === "episode4" && activeEpisode !== "episode4") {
+    return null;
+  }
+
+  const table =
+    episode === "episode4"
+      ? BATTLE_INVENTORY_TABLES.episode4
+      : activeEpisode === "episode5"
+        ? BATTLE_INVENTORY_TABLES.episode5
+        : BATTLE_INVENTORY_TABLES.episode5InEpisode4Battle;
+  return isInventoryTableInRange(data, table) ? table : null;
+}
+
+function isInventoryTableInRange(data: Uint8Array, table: InventoryTable): boolean {
+  return table.countOffset + 4 <= data.length && table.startOffset <= data.length;
+}
+
+function hasPlausibleInventoryCount(data: Uint8Array, table: InventoryTable): boolean {
+  if (!isInventoryTableInRange(data, table)) {
+    return false;
+  }
+
+  const count = readInverseUint32(data, table.countOffset);
+  return count > 0 && count <= getInventoryWritableLimit(data, table);
+}
+
+function readMoney(data: Uint8Array, scope: SaveDataScope, episode: EpisodeKey): MoneyInfo {
+  const target = getMoneyTarget(data, scope, episode);
+  if (!target) {
+    return {
+      label: `${getEpisodeLabel(episode)} / 전투`,
+      offset: 0,
+      value: 0,
+      raw: "",
+      supported: false
+    };
+  }
+
   return {
     label: target.label,
     offset: target.offset,
     value: readInverseUint32(data, target.offset),
-    raw: readRawHex(data, target.offset, 4)
+    raw: readRawHex(data, target.offset, 4),
+    supported: true
   };
 }
 
-function readInventory(data: Uint8Array): Record<EpisodeKey, Record<InventoryItemKey, InventoryItemInfo>> {
+function readInventory(data: Uint8Array, scope: SaveDataScope): Record<EpisodeKey, Record<InventoryItemKey, InventoryItemInfo>> {
   return {
     episode4: {
-      lowCapsule: readInventoryItem(data, "episode4", "lowCapsule"),
-      fullRecoveryCapsule: readInventoryItem(data, "episode4", "fullRecoveryCapsule"),
-      recoveryCapsule: readInventoryItem(data, "episode4", "recoveryCapsule"),
-      stabilizer: readInventoryItem(data, "episode4", "stabilizer"),
-      goddessHolyWater: readInventoryItem(data, "episode4", "goddessHolyWater"),
-      mediumCapsule: readInventoryItem(data, "episode4", "mediumCapsule"),
-      highCapsule: readInventoryItem(data, "episode4", "highCapsule"),
-      bigCapsule: readInventoryItem(data, "episode4", "bigCapsule"),
-      gift: readInventoryItem(data, "episode4", "gift")
+      lowCapsule: readInventoryItem(data, scope, "episode4", "lowCapsule"),
+      fullRecoveryCapsule: readInventoryItem(data, scope, "episode4", "fullRecoveryCapsule"),
+      recoveryCapsule: readInventoryItem(data, scope, "episode4", "recoveryCapsule"),
+      stabilizer: readInventoryItem(data, scope, "episode4", "stabilizer"),
+      goddessHolyWater: readInventoryItem(data, scope, "episode4", "goddessHolyWater"),
+      mediumCapsule: readInventoryItem(data, scope, "episode4", "mediumCapsule"),
+      highCapsule: readInventoryItem(data, scope, "episode4", "highCapsule"),
+      bigCapsule: readInventoryItem(data, scope, "episode4", "bigCapsule"),
+      gift: readInventoryItem(data, scope, "episode4", "gift")
     },
     episode5: {
-      lowCapsule: readInventoryItem(data, "episode5", "lowCapsule"),
-      fullRecoveryCapsule: readInventoryItem(data, "episode5", "fullRecoveryCapsule"),
-      recoveryCapsule: readInventoryItem(data, "episode5", "recoveryCapsule"),
-      stabilizer: readInventoryItem(data, "episode5", "stabilizer"),
-      goddessHolyWater: readInventoryItem(data, "episode5", "goddessHolyWater"),
-      mediumCapsule: readInventoryItem(data, "episode5", "mediumCapsule"),
-      highCapsule: readInventoryItem(data, "episode5", "highCapsule"),
-      bigCapsule: readInventoryItem(data, "episode5", "bigCapsule"),
-      gift: readInventoryItem(data, "episode5", "gift")
+      lowCapsule: readInventoryItem(data, scope, "episode5", "lowCapsule"),
+      fullRecoveryCapsule: readInventoryItem(data, scope, "episode5", "fullRecoveryCapsule"),
+      recoveryCapsule: readInventoryItem(data, scope, "episode5", "recoveryCapsule"),
+      stabilizer: readInventoryItem(data, scope, "episode5", "stabilizer"),
+      goddessHolyWater: readInventoryItem(data, scope, "episode5", "goddessHolyWater"),
+      mediumCapsule: readInventoryItem(data, scope, "episode5", "mediumCapsule"),
+      highCapsule: readInventoryItem(data, scope, "episode5", "highCapsule"),
+      bigCapsule: readInventoryItem(data, scope, "episode5", "bigCapsule"),
+      gift: readInventoryItem(data, scope, "episode5", "gift")
     }
   };
 }
 
-function readInventorySlots(data: Uint8Array, episode: EpisodeKey): InventorySlotInfo[] {
-  const table = INVENTORY_TABLES[episode];
-  if (table.startOffset <= 0 || table.countOffset <= 0) {
+function readInventorySlots(data: Uint8Array, scope: SaveDataScope, episode: EpisodeKey): InventorySlotInfo[] {
+  const table = getInventoryTable(data, scope, episode);
+  if (!table) {
     return [];
   }
 
@@ -893,9 +1278,10 @@ function readInventorySlots(data: Uint8Array, episode: EpisodeKey): InventorySlo
   return slots;
 }
 
-function readInventoryItem(data: Uint8Array, episode: EpisodeKey, key: InventoryItemKey): InventoryItemInfo {
+function readInventoryItem(data: Uint8Array, scope: SaveDataScope, episode: EpisodeKey, key: InventoryItemKey): InventoryItemInfo {
   const item = INVENTORY_ITEM_DEFINITIONS[key];
-  const slot = findInventorySlot(data, episode, item.itemCode);
+  const slot = findInventorySlot(data, scope, episode, item.itemCode);
+  const supported = Boolean(getInventoryTable(data, scope, episode));
   if (slot === null) {
     return {
       key,
@@ -905,7 +1291,7 @@ function readInventoryItem(data: Uint8Array, episode: EpisodeKey, key: Inventory
       quantityOffset: 0,
       value: 0,
       raw: "",
-      supported: INVENTORY_TABLES[episode].startOffset > 0
+      supported
     };
   }
 
@@ -921,71 +1307,97 @@ function readInventoryItem(data: Uint8Array, episode: EpisodeKey, key: Inventory
   };
 }
 
-function applyInventorySlotEdits(data: Uint8Array, edits: Partial<Record<EpisodeKey, InventorySlotEdit[]>>): void {
-  for (const [episode, episodeEdits] of Object.entries(edits) as Array<[EpisodeKey, InventorySlotEdit[] | undefined]>) {
-    if (!episodeEdits) {
+function applyInventorySlotEdits(
+  data: Uint8Array,
+  edits: Partial<Record<SaveDataScope, Partial<Record<EpisodeKey, InventorySlotEdit[]>>>>
+): void {
+  for (const [scope, scopeEdits] of Object.entries(edits) as Array<
+    [SaveDataScope, Partial<Record<EpisodeKey, InventorySlotEdit[]>> | undefined]
+  >) {
+    if (!scopeEdits) {
       continue;
     }
 
-    const table = INVENTORY_TABLES[episode];
-    if (table.startOffset <= 0 || table.countOffset <= 0) {
-      continue;
-    }
-
-    const normalized = episodeEdits.filter((item) => item.quantity > 0);
-    const slotLimit = getInventoryWritableLimit(data, table);
-    if (normalized.length > slotLimit) {
-      throw new Error("인벤토리 데이터가 세이브 파일 범위를 벗어납니다.");
-    }
-
-    const seenCodes = new Set<number>();
-    for (const item of normalized) {
-      if (!Number.isInteger(item.itemCode) || item.itemCode < 0 || item.itemCode > 0xffffffff) {
-        throw new Error("소모품/장비 코드는 0 이상 4바이트 정수 이하여야 합니다.");
+    for (const [episode, episodeEdits] of Object.entries(scopeEdits) as Array<
+      [EpisodeKey, InventorySlotEdit[] | undefined]
+    >) {
+      if (!episodeEdits) {
+        continue;
       }
-      if (!Number.isInteger(item.quantity) || item.quantity < 0 || item.quantity > 99) {
-        throw new Error("소모품/장비 수량은 0~99 사이의 정수여야 합니다.");
-      }
-      if (seenCodes.has(item.itemCode)) {
-        throw new Error("같은 소모품/장비는 인벤토리에 중복 저장할 수 없습니다.");
-      }
-      seenCodes.add(item.itemCode);
-    }
 
-    writeInverseUint32(data, table.countOffset, normalized.length);
-    normalized.forEach((item, index) => {
-      const codeOffset = table.startOffset + index * 8;
-      const quantityOffset = codeOffset + 4;
-      writeInverseUint32(data, codeOffset, item.itemCode);
-      writeInverseUint32(data, quantityOffset, item.quantity);
-    });
+      const table = getInventoryTable(data, scope, episode);
+      if (!table) {
+        continue;
+      }
+
+      const normalized = episodeEdits.filter((item) => item.quantity > 0);
+      const slotLimit = getInventoryWritableLimit(data, table);
+      if (normalized.length > slotLimit) {
+        throw new Error("인벤토리 데이터가 세이브 파일 범위를 벗어납니다.");
+      }
+
+      const seenCodes = new Set<number>();
+      for (const item of normalized) {
+        if (!Number.isInteger(item.itemCode) || item.itemCode < 0 || item.itemCode > 0xffffffff) {
+          throw new Error("소모품/장비 코드는 0 이상 4바이트 정수 이하여야 합니다.");
+        }
+        if (!Number.isInteger(item.quantity) || item.quantity < 0 || item.quantity > 99) {
+          throw new Error("소모품/장비 수량은 0~99 사이의 정수여야 합니다.");
+        }
+        if (seenCodes.has(item.itemCode)) {
+          throw new Error("같은 소모품/장비는 인벤토리에 중복 저장할 수 없습니다.");
+        }
+        seenCodes.add(item.itemCode);
+      }
+
+      writeInverseUint32(data, table.countOffset, normalized.length);
+      normalized.forEach((item, index) => {
+        const codeOffset = table.startOffset + index * 8;
+        const quantityOffset = codeOffset + 4;
+        writeInverseUint32(data, codeOffset, item.itemCode);
+        writeInverseUint32(data, quantityOffset, item.quantity);
+      });
+    }
   }
 }
 
-function applyInventoryEdits(data: Uint8Array, edits: Partial<Record<EpisodeKey, Partial<Record<InventoryItemKey, number>>>>): void {
-  for (const [episode, episodeEdits] of Object.entries(edits) as Array<[EpisodeKey, Partial<Record<InventoryItemKey, number>> | undefined]>) {
-    if (!episodeEdits) {
+function applyInventoryEdits(
+  data: Uint8Array,
+  edits: Partial<Record<SaveDataScope, Partial<Record<EpisodeKey, Partial<Record<InventoryItemKey, number>>>>>>
+): void {
+  for (const [scope, scopeEdits] of Object.entries(edits) as Array<
+    [SaveDataScope, Partial<Record<EpisodeKey, Partial<Record<InventoryItemKey, number>>>> | undefined]
+  >) {
+    if (!scopeEdits) {
       continue;
     }
 
-    for (const [key, value] of Object.entries(episodeEdits) as Array<[InventoryItemKey, number | undefined]>) {
-      if (typeof value !== "number") {
+    for (const [episode, episodeEdits] of Object.entries(scopeEdits) as Array<
+      [EpisodeKey, Partial<Record<InventoryItemKey, number>> | undefined]
+    >) {
+      if (!episodeEdits) {
         continue;
-      }
-      if (!Number.isInteger(value) || value < 0 || value > 99) {
-        throw new Error("소모품 수량은 0~99 사이의 정수여야 합니다.");
       }
 
-      const item = INVENTORY_ITEM_DEFINITIONS[key];
-      const existingSlot = findInventorySlot(data, episode, item.itemCode);
-      const slot = existingSlot ?? findReusableInventorySlot(data, episode);
-      if (slot === null) {
-        continue;
-      }
-      writeInverseUint32(data, slot.codeOffset, item.itemCode);
-      writeInverseUint32(data, slot.quantityOffset, value);
-      if (existingSlot === null && value > 0) {
-        updateInventoryCount(data, episode, slot.index + 1);
+      for (const [key, value] of Object.entries(episodeEdits) as Array<[InventoryItemKey, number | undefined]>) {
+        if (typeof value !== "number") {
+          continue;
+        }
+        if (!Number.isInteger(value) || value < 0 || value > 99) {
+          throw new Error("소모품 수량은 0~99 사이의 정수여야 합니다.");
+        }
+
+        const item = INVENTORY_ITEM_DEFINITIONS[key];
+        const existingSlot = findInventorySlot(data, scope, episode, item.itemCode);
+        const slot = existingSlot ?? findReusableInventorySlot(data, scope, episode);
+        if (slot === null) {
+          continue;
+        }
+        writeInverseUint32(data, slot.codeOffset, item.itemCode);
+        writeInverseUint32(data, slot.quantityOffset, value);
+        if (existingSlot === null && value > 0) {
+          updateInventoryCount(data, scope, episode, slot.index + 1);
+        }
       }
     }
   }
@@ -997,11 +1409,12 @@ export function getInventoryCatalogItem(itemCode: number): InventoryCatalogItem 
 
 function findInventorySlot(
   data: Uint8Array,
+  scope: SaveDataScope,
   episode: EpisodeKey,
   itemCode: number
 ): { index: number; codeOffset: number; quantityOffset: number } | null {
-  const table = INVENTORY_TABLES[episode];
-  if (table.startOffset <= 0) {
+  const table = getInventoryTable(data, scope, episode);
+  if (!table) {
     return null;
   }
   const scanCount = getInventoryReadableCount(data, table);
@@ -1022,10 +1435,11 @@ function findInventorySlot(
 
 function findReusableInventorySlot(
   data: Uint8Array,
+  scope: SaveDataScope,
   episode: EpisodeKey
 ): { index: number; codeOffset: number; quantityOffset: number } | null {
-  const table = INVENTORY_TABLES[episode];
-  if (table.startOffset <= 0) {
+  const table = getInventoryTable(data, scope, episode);
+  if (!table) {
     return null;
   }
 
@@ -1044,18 +1458,18 @@ function findReusableInventorySlot(
   return { index: currentCount, codeOffset, quantityOffset };
 }
 
-function getInventoryReadableCount(data: Uint8Array, table: (typeof INVENTORY_TABLES)[EpisodeKey]): number {
+function getInventoryReadableCount(data: Uint8Array, table: InventoryTable): number {
   const rawCount = readInverseUint32(data, table.countOffset);
   return Math.min(rawCount, getInventoryWritableLimit(data, table));
 }
 
-function getInventoryWritableLimit(data: Uint8Array, table: (typeof INVENTORY_TABLES)[EpisodeKey]): number {
+function getInventoryWritableLimit(data: Uint8Array, table: InventoryTable): number {
   return Math.max(0, Math.floor((data.length - table.startOffset) / 8));
 }
 
-function updateInventoryCount(data: Uint8Array, episode: EpisodeKey, minimumCount: number): void {
-  const table = INVENTORY_TABLES[episode];
-  if (table.countOffset <= 0) {
+function updateInventoryCount(data: Uint8Array, scope: SaveDataScope, episode: EpisodeKey, minimumCount: number): void {
+  const table = getInventoryTable(data, scope, episode);
+  if (!table) {
     return;
   }
 
@@ -1096,6 +1510,11 @@ function readEquipment(data: Uint8Array, scope: EquipmentScope): CharacterEquipm
     return readFieldCharacterCodes(data).map((characterCode) => readCharacterEquipment(data, characterCode, scope));
   }
 
+  const battleCharacterCodes = readBattleCharacterCodes(data);
+  if (battleCharacterCodes.length > 0) {
+    return battleCharacterCodes.map((characterCode) => readCharacterEquipment(data, characterCode, scope));
+  }
+
   const activeParty = readParty(data, getActiveEpisodeKey(data));
   return activeParty.members.map((member) => readCharacterEquipment(data, member.code, scope));
 }
@@ -1123,6 +1542,11 @@ function readCharacterEquipment(data: Uint8Array, characterCode: number, scope: 
     characterName,
     scope,
     supported: true,
+    face: readCharacterWeaponDetail(data, baseOffset + CHARACTER_FACE_RELATIVE_OFFSET_FROM_EQUIPMENT),
+    name: readCharacterWeaponDetail(data, baseOffset + CHARACTER_NAME_RELATIVE_OFFSET_FROM_EQUIPMENT),
+    job: readCharacterWeaponDetail(data, baseOffset + CHARACTER_JOB_RELATIVE_OFFSET_FROM_EQUIPMENT),
+    voice: readCharacterWeaponDetail(data, baseOffset + CHARACTER_VOICE_RELATIVE_OFFSET_FROM_EQUIPMENT),
+    body: readCharacterWeaponDetail(data, baseOffset + CHARACTER_BODY_RELATIVE_OFFSET_FROM_EQUIPMENT),
     weaponAttackType: readCharacterWeaponDetail(data, baseOffset + WEAPON_ATTACK_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT),
     weaponPicType: readCharacterWeaponDetail(data, baseOffset + WEAPON_PIC_RELATIVE_OFFSET_FROM_EQUIPMENT),
     weaponType: readCharacterWeaponDetail(data, baseOffset + WEAPON_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT),
@@ -1146,6 +1570,22 @@ function applyEquipmentEdits(data: Uint8Array, edits: CharacterEquipmentEdit[]):
       continue;
     }
 
+    if (typeof edit.face === "number") {
+      writeInverseUint16(data, baseOffset + CHARACTER_FACE_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.face);
+    }
+    if (typeof edit.name === "number") {
+      writeInverseUint16(data, baseOffset + CHARACTER_NAME_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.name);
+      writeInverseUint16(data, baseOffset + CHARACTER_SECOND_NAME_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.name);
+    }
+    if (typeof edit.job === "number") {
+      writeInverseUint16(data, baseOffset + CHARACTER_JOB_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.job);
+    }
+    if (typeof edit.voice === "number") {
+      writeInverseUint16(data, baseOffset + CHARACTER_VOICE_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.voice);
+    }
+    if (typeof edit.body === "number") {
+      writeInverseUint16(data, baseOffset + CHARACTER_BODY_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.body);
+    }
     if (typeof edit.weaponAttackType === "number") {
       writeInverseUint16(data, baseOffset + WEAPON_ATTACK_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT, edit.weaponAttackType);
     }
@@ -1187,7 +1627,13 @@ function getEquipmentBaseOffset(data: Uint8Array, characterCode: number, scope: 
 
   const baseOffset = BATTLE_EQUIPMENT_BASE_OFFSETS[characterCode];
 
-  if (typeof baseOffset === "number" && baseOffset + 12 <= data.length) {
+  if (
+    typeof baseOffset === "number" &&
+    baseOffset + 12 <= data.length &&
+    baseOffset >= EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER &&
+    readInverseUint16(data, baseOffset - EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER) === characterCode &&
+    looksLikeEquipmentBlock(data, baseOffset)
+  ) {
     return baseOffset;
   }
 
@@ -1238,6 +1684,32 @@ function readFieldCharacterCodes(data: Uint8Array): number[] {
     .map(({ characterCode }) => characterCode);
 }
 
+function readBattleCharacterCodes(data: Uint8Array): number[] {
+  if (readInverseUint32(data, 0x0c) !== 1) {
+    return [];
+  }
+
+  const result: number[] = [];
+  const seen = new Set<number>();
+  const startOffset = Math.min(BATTLE_UNIT_SCAN_START_OFFSET, data.length);
+  for (let offset = startOffset; offset + EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER + 12 <= data.length; offset += 1) {
+    const characterCode = readInverseUint16(data, offset);
+    if (!CHARACTER_NAMES.has(characterCode) || seen.has(characterCode)) {
+      continue;
+    }
+
+    const equipmentOffset = offset + EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER;
+    if (!isPlausibleBattleEquipmentBlock(data, equipmentOffset)) {
+      continue;
+    }
+
+    seen.add(characterCode);
+    result.push(characterCode);
+  }
+
+  return result;
+}
+
 function findCharacterEquipmentBaseOffset(data: Uint8Array, characterCode: number, preferLast: boolean): number | null {
   let fallbackOffset: number | null = null;
 
@@ -1247,7 +1719,10 @@ function findCharacterEquipmentBaseOffset(data: Uint8Array, characterCode: numbe
     }
 
     const equipmentOffset = offset + EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER;
-    if (equipmentOffset + 12 > data.length || !looksLikeEquipmentBlock(data, equipmentOffset)) {
+    if (
+      equipmentOffset + 12 > data.length ||
+      !(preferLast ? isPlausibleBattleEquipmentBlock(data, equipmentOffset) : looksLikeEquipmentBlock(data, equipmentOffset))
+    ) {
       continue;
     }
 
@@ -1267,6 +1742,34 @@ function looksLikeEquipmentBlock(data: Uint8Array, offset: number): boolean {
   });
 }
 
+function isPlausibleBattleEquipmentBlock(data: Uint8Array, offset: number): boolean {
+  if (!looksLikeEquipmentBlock(data, offset)) {
+    return false;
+  }
+  if (!looksLikeKnownEquipmentBlock(data, offset)) {
+    return false;
+  }
+
+  const weaponAttackTypeOffset = offset + WEAPON_ATTACK_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT;
+  if (weaponAttackTypeOffset < 0 || weaponAttackTypeOffset + 2 > data.length) {
+    return false;
+  }
+
+  const weaponAttackType = readInverseUint16(data, weaponAttackTypeOffset);
+  if (weaponAttackType !== 1 && weaponAttackType !== 6 && weaponAttackType !== 1479) {
+    return false;
+  }
+
+  return EQUIPMENT_SLOT_DEFINITIONS.some((slot) => readInverseUint16(data, offset + slot.relativeOffset) !== 0);
+}
+
+function looksLikeKnownEquipmentBlock(data: Uint8Array, offset: number): boolean {
+  return EQUIPMENT_SLOT_DEFINITIONS.every((slot) => {
+    const value = readInverseUint16(data, offset + slot.relativeOffset);
+    return value === 0 || EQUIPMENT_OPTIONS[slot.key].some((option) => option.code === value);
+  });
+}
+
 function readMercenaries(data: Uint8Array, scope: EquipmentScope): CharacterMercenaryInfo[] {
   if (scope === "field") {
     return readFieldCharacterCodes(data).map((characterCode) => readCharacterMercenary(data, characterCode, scope));
@@ -1275,6 +1778,11 @@ function readMercenaries(data: Uint8Array, scope: EquipmentScope): CharacterMerc
   const locationCode = readInverseUint32(data, 0x0c);
   if (locationCode !== 1) {
     return [];
+  }
+
+  const battleCharacterCodes = readBattleCharacterCodes(data);
+  if (battleCharacterCodes.length > 0) {
+    return battleCharacterCodes.map((characterCode) => readCharacterMercenary(data, characterCode, scope));
   }
 
   const activeParty = readParty(data, getActiveEpisodeKey(data));

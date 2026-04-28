@@ -55,6 +55,55 @@ The battle equipment candidates that match the active Episode 5 party are:
 
 No valid Saladin battle equipment block was confirmed in this current Episode 5 battle sample.
 
+## Confirmed Current Episode 5 Battle Inventory/Money Sample
+
+The currently checked Episode 5 battle save appears to copy the Episode 5 field inventory/money block into a separate battle-time block.
+
+Known Episode 5 field inventory/money layout:
+
+```text
+field inventory count offset = 0x74A4
+field money offset           = 0x74A8
+field inventory slot start   = 0x74AC
+slot size                    = 8 bytes
+```
+
+In the current Episode 5 battle sample, the matching battle-time block is:
+
+```text
+battle inventory count offset = 0xBE41
+battle money offset           = 0xBE45
+battle inventory slot start   = 0xBE49
+slot size                     = 8 bytes
+```
+
+The current Episode 5 money value is `570900`. It is stored with inverse 32-bit little-endian encoding:
+
+```text
+value = 0xFFFFFFFF - raw32
+570900 -> raw32 0xFFF749EB -> bytes EB 49 F7 FF
+```
+
+Confirmed values in the current sample:
+
+| Data | Field Offset | Battle Offset | Raw 32-bit LE | Decoded Value |
+| --- | ---: | ---: | ---: | ---: |
+| Episode 5 inventory count | `0x74A4` | `0xBE41` | `0xFFFFFFFB` | `4` |
+| Episode 5 money | `0x74A8` | `0xBE45` | `0xFFF749EB` | `570900` |
+
+Confirmed active inventory slots match between field and battle blocks:
+
+| Slot | Field Offset | Battle Offset | Item Code | Quantity |
+| ---: | ---: | ---: | ---: | ---: |
+| 0 | `0x74AC` | `0xBE49` | `122` | `10` |
+| 1 | `0x74B4` | `0xBE51` | `125` | `10` |
+| 2 | `0x74BC` | `0xBE59` | `126` | `1` |
+| 3 | `0x74C4` | `0xBE61` | `46` | `1` |
+
+Additional comparison found that the byte range starting at field offset `0x74A4` matches the byte range starting at battle offset `0xBE41` for at least `0x2058` bytes. This supports the interpretation that this is a copied Episode 5 field data block, not an isolated money-only duplicate.
+
+Treat these offsets as confirmed only for the current Episode 5 battle sample until additional battle saves are compared. Do not assume the Episode 4 battle inventory/money block uses the same battle offset.
+
 ## Character Detail Weapon Fields
 
 The same relative offsets were observed in both chapter/field character records and battle-unit records.

@@ -5,8 +5,13 @@ import {
   CharacterEquipmentInfo,
   CharacterMercenaryInfo,
   CharacterMercenaryEdit,
+  CHARACTER_BODY_OPTIONS,
+  CHARACTER_FACE_OPTIONS,
+  CHARACTER_JOB_OPTIONS,
   CHARACTER_NAMES,
+  CHARACTER_NAME_OPTIONS,
   CHARACTER_OPTIONS,
+  CHARACTER_VOICE_OPTIONS,
   CONSUMABLE_KIND_LABELS,
   ConsumableKind,
   EQUIPMENT_OPTIONS,
@@ -25,6 +30,7 @@ import {
   PARTY_MEMBER_LIMIT,
   parseSave,
   SaveEditRequest,
+  SaveDataScope,
   PartyInfo,
   SaveInfo,
   WEAPON_ATTACK_TYPE_OPTIONS,
@@ -35,65 +41,141 @@ import {
 } from "../shared/saveFormat";
 import { getItemStatText } from "../shared/itemStats";
 
-const episodeLabels: Record<EpisodeKey, string> = {
-  episode4: "에피소드4",
-  episode5: "에피소드5"
-};
-
 type DraftParties = Record<EpisodeKey, number[]>;
-type DraftMoney = Record<EpisodeKey, string>;
+type DraftMoney = Record<SaveDataScope, Record<EpisodeKey, string>>;
 type DraftInventorySlot = { itemCode: number; quantity: string };
-type DraftInventory = Record<EpisodeKey, DraftInventorySlot[]>;
+type DraftInventory = Record<SaveDataScope, Record<EpisodeKey, DraftInventorySlot[]>>;
+type CharacterDetailKey = "face" | "name" | "job" | "voice" | "body" | "weaponAttackType" | "weaponPicType" | "weaponType";
+type CharacterAppearancePreset = {
+  id: string;
+  code: number;
+  name: string;
+  values: Record<CharacterDetailKey, number>;
+};
+type CharacterDetailField = {
+  key: CharacterDetailKey;
+  label: string;
+  options: Array<{ code: number; name: string }>;
+};
 type DraftEquipmentEntry = Record<EquipmentSlotKey, number> & {
+  face?: number;
+  name?: number;
+  job?: number;
+  voice?: number;
+  body?: number;
   weaponAttackType?: number;
   weaponPicType?: number;
   weaponType?: number;
 };
 type DraftEquipment = Record<EquipmentScope, Record<number, DraftEquipmentEntry>>;
 type DraftMercenaries = Record<EquipmentScope, Record<number, number>>;
-type EditorTab = EquipmentScope;
+type MainTab = {
+  key: string;
+  episode: EpisodeKey;
+  scope: SaveDataScope;
+  label: string;
+};
+type MainTabKey = "episode4Field" | "episode5Field" | "episode4Battle" | "episode5Battle";
+type CharacterEditorTab = "appearance" | "equipment";
 type LoadedSave = {
   save: SaveInfo;
   browserBytes?: Uint8Array | null;
 };
 
-const editorTabLabels: Record<EditorTab, string> = {
-  field: "챕터 데이터",
-  battle: "전투 데이터"
+const mainTabs: Array<MainTab & { key: MainTabKey }> = [
+  { key: "episode4Field", episode: "episode4", scope: "field", label: "에피소드4" },
+  { key: "episode5Field", episode: "episode5", scope: "field", label: "에피소드5" },
+  { key: "episode4Battle", episode: "episode4", scope: "battle", label: "에피소드4(전투)" },
+  { key: "episode5Battle", episode: "episode5", scope: "battle", label: "에피소드5(전투)" }
+];
+
+const characterEditorTabLabels: Record<CharacterEditorTab, string> = {
+  appearance: "외형",
+  equipment: "장비"
 };
+
+const dataScopes: SaveDataScope[] = ["field", "battle"];
+const episodeKeys: EpisodeKey[] = ["episode4", "episode5"];
+
+const characterAppearancePresets: CharacterAppearancePreset[] = [
+  { id: "나야트레이", code: 563, name: "나야트레이", values: { face: 1288, name: 2567, job: 2568, voice: 11, body: 1277, weaponAttackType: 1, weaponType: 11, weaponPicType: 43 } },
+  { id: "네리사", code: 236, name: "네리사", values: { face: 655, name: 30, job: 1986, voice: 13, body: 899, weaponAttackType: 1, weaponType: 8, weaponPicType: 40 } },
+  { id: "데미안 (에피소드4)", code: 237, name: "데미안 (에피소드4)", values: { face: 657, name: 228, job: 1987, voice: 14, body: 256, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { id: "데미안 (에피소드5)", code: 427, name: "데미안 (에피소드5)", values: { face: 657, name: 228, job: 1987, voice: 14, body: 256, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { id: "디에네 (에피소드4)", code: 238, name: "디에네 (에피소드4)", values: { face: 656, name: 229, job: 1747, voice: 15, body: 567, weaponAttackType: 1, weaponType: 0, weaponPicType: 47 } },
+  { id: "디에네 (에피소드5)", code: 242, name: "디에네 (에피소드5)", values: { face: 656, name: 229, job: 1679, voice: 15, body: 1205, weaponAttackType: 1, weaponType: 0, weaponPicType: 47 } },
+  { id: "란", code: 222, name: "란", values: { face: 658, name: 437, job: 1399, voice: 30, body: 570, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { id: "레드헤드", code: 38, name: "레드헤드", values: { face: 659, name: 443, job: 1681, voice: 16, body: 1096, weaponAttackType: 1, weaponType: 9, weaponPicType: 41 } },
+  { id: "루시엔", code: 240, name: "루시엔", values: { face: 789, name: 451, job: 1988, voice: 17, body: 903, weaponAttackType: 6, weaponType: 10, weaponPicType: 42 } },
+  { id: "루크랜서드 (에피소드4)", code: 246, name: "루크랜서드 (에피소드4)", values: { face: 751, name: 1692, job: 1679, voice: 18, body: 649, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { id: "루크랜서드 (에피소드5)", code: 484, name: "루크랜서드 (에피소드5)", values: { face: 751, name: 1692, job: 1747, voice: 18, body: 649, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { id: "리엔", code: 398, name: "리엔", values: { face: 668, name: 456, job: 1688, voice: 19, body: 1017, weaponAttackType: 1, weaponType: 17, weaponPicType: 55 } },
+  { id: "리차드", code: 241, name: "리차드", values: { face: 669, name: 459, job: 1989, voice: 20, body: 582, weaponAttackType: 6, weaponType: 13, weaponPicType: 45 } },
+  { id: "마리아", code: 243, name: "마리아", values: { face: 671, name: 458, job: 1990, voice: 21, body: 572, weaponAttackType: 1, weaponType: 11, weaponPicType: 43 } },
+  { id: "베라모드", code: 223, name: "베라모드", values: { face: 673, name: 462, job: 1399, voice: 22, body: 506, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { id: "베라모드 (마에라드)", code: 223, name: "베라모드 (마에라드)", values: { face: 673, name: 462, job: 1399, voice: 35, body: 507, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { id: "살라딘", code: 219, name: "살라딘", values: { face: 674, name: 463, job: 951, voice: 23, body: 347, weaponAttackType: 1, weaponType: 0, weaponPicType: 49 } },
+  { id: "살라딘 (크로슬리 커스텀)", code: 219, name: "살라딘 (크로슬리 커스텀)", values: { face: 674, name: 463, job: 951, voice: 23, body: 1185, weaponAttackType: 1, weaponType: 0, weaponPicType: 49 } },
+  { id: "샤크바리", code: 245, name: "샤크바리", values: { face: 675, name: 1943, job: 1986, voice: 24, body: 202, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
+  { id: "슈", code: 36, name: "슈", values: { face: 766, name: 1898, job: 2347, voice: 5, body: 1166, weaponAttackType: 6, weaponType: 1, weaponPicType: 53 } },
+  { id: "슈로 위장한 진", code: 36, name: "슈로 위장한 진", values: { face: 766, name: 2423, job: 1998, voice: 5, body: 1166, weaponAttackType: 1479, weaponType: 1, weaponPicType: 0 } },
+  { id: "아셀라스", code: 56, name: "아셀라스", values: { face: 676, name: 467, job: 1995, voice: 25, body: 55, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { id: "아슈레이", code: 57, name: "아슈레이", values: { face: 677, name: 468, job: 1995, voice: 34, body: 597, weaponAttackType: 1, weaponType: 0, weaponPicType: 48 } },
+  { id: "엠블라", code: 247, name: "엠블라", values: { face: 679, name: 470, job: 2251, voice: 26, body: 392, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { id: "유진", code: 244, name: "유진", values: { face: 756, name: 472, job: 1991, voice: 27, body: 900, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
+  { id: "젠 (아슈레이)", code: 57, name: "젠 (아슈레이)", values: { face: 677, name: 2392, job: 1991, voice: 34, body: 597, weaponAttackType: 1, weaponType: 0, weaponPicType: 48 } },
+  { id: "죠안", code: 221, name: "죠안", values: { face: 685, name: 475, job: 951, voice: 1, body: 338, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { id: "진", code: 239, name: "진", values: { face: 762, name: 1899, job: 2347, voice: 5, body: 1167, weaponAttackType: 6, weaponType: 1, weaponPicType: 53 } },  // 외형과 데이터가 일치하지 않음. 게임 버그로 보여 외형에 맞게 수동 변경  
+  { id: "카를로스", code: 64, name: "카를로스", values: { face: 686, name: 477, job: 2124, voice: 28, body: 641, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { id: "크리스티앙", code: 220, name: "크리스티앙", values: { face: 688, name: 479, job: 1296, voice: 32, body: 323, weaponAttackType: 6, weaponType: 12, weaponPicType: 44 } },
+];
 
 const emptySaveStatus = "G3P_II*.sav 파일을 열거나 여기로 드래그하세요.";
 
 export default function App() {
   const [save, setSave] = useState<SaveInfo | null>(null);
   const [browserSaveBytes, setBrowserSaveBytes] = useState<Uint8Array | null>(null);
-  const [activeEpisode, setActiveEpisode] = useState<EpisodeKey>("episode4");
-  const [draftMoney, setDraftMoney] = useState<DraftMoney>({ episode4: "", episode5: "" });
+  const [activeMainTab, setActiveMainTab] = useState<MainTabKey>("episode4Field");
+  const [draftMoney, setDraftMoney] = useState<DraftMoney>({
+    field: { episode4: "", episode5: "" },
+    battle: { episode4: "", episode5: "" }
+  });
   const [draftInventory, setDraftInventory] = useState<DraftInventory>({
-    episode4: [],
-    episode5: []
+    field: { episode4: [], episode5: [] },
+    battle: { episode4: [], episode5: [] }
   });
   const [draftParties, setDraftParties] = useState<DraftParties>({ episode4: [], episode5: [] });
   const [draftEquipment, setDraftEquipment] = useState<DraftEquipment>({ field: {}, battle: {} });
   const [draftMercenaries, setDraftMercenaries] = useState<DraftMercenaries>({ field: {}, battle: {} });
   const [selectedEquipmentCode, setSelectedEquipmentCode] = useState<number | null>(null);
-  const [activeEditorTab, setActiveEditorTab] = useState<EditorTab>("field");
+  const [activeCharacterTab, setActiveCharacterTab] = useState<CharacterEditorTab>("appearance");
   const [status, setStatus] = useState(emptySaveStatus);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
 
-  const activeMoney = save?.money[activeEpisode];
+  const activeTabInfo = mainTabs.find((tab) => tab.key === activeMainTab) ?? mainTabs[0];
+  const activeEpisode = activeTabInfo.episode;
+  const activeDataScope = activeTabInfo.scope;
+  const activeMoney = save?.money[activeDataScope][activeEpisode];
   const activeParty = save?.parties[activeEpisode];
-  const activePartyCodes = draftParties[activeEpisode];
-  const activeMoneyNumber = useMemo(
-    () => Number(draftMoney[activeEpisode].replaceAll(",", "")),
-    [activeEpisode, draftMoney]
+  const activePartyCodes =
+    activeDataScope === "battle"
+      ? (save?.equipment.battle.filter((equipment) => equipment.supported).map((equipment) => equipment.characterCode) ?? [])
+      : draftParties[activeEpisode];
+  const allMoneyNumbers = useMemo(
+    () =>
+      dataScopes.flatMap((scope) =>
+        episodeKeys.map((episode) => Number(draftMoney[scope][episode].replaceAll(",", "")))
+      ),
+    [draftMoney]
   );
   const allInventoryNumbers = useMemo(
     () =>
-      (["episode4", "episode5"] as EpisodeKey[]).flatMap((episode) =>
-        draftInventory[episode].map((item) =>
-          item.quantity === "" ? 0 : Number(item.quantity.replaceAll(",", ""))
+      dataScopes.flatMap((scope) =>
+        episodeKeys.flatMap((episode) =>
+          draftInventory[scope][episode].map((item) =>
+            item.quantity === "" ? 0 : Number(item.quantity.replaceAll(",", ""))
+          )
         )
       ),
     [draftInventory]
@@ -103,7 +185,7 @@ export default function App() {
   const canWrite = Boolean(
     save &&
       (electronApi || browserSaveBytes) &&
-      isValidMoney(activeMoneyNumber) &&
+      allMoneyNumbers.every(isValidMoney) &&
       allInventoryNumbers.every(isValidCount)
   );
 
@@ -130,14 +212,26 @@ export default function App() {
     setSave(nextSave);
     setBrowserSaveBytes(nextBrowserBytes);
     document.title = nextSave.fileName;
-    setActiveEpisode(nextSave.episode.label === "에피소드5" ? "episode5" : "episode4");
+    setActiveMainTab(getInitialMainTab(nextSave));
     setDraftMoney({
-      episode4: String(nextSave.money.episode4.value),
-      episode5: String(nextSave.money.episode5.value)
+      field: {
+        episode4: String(nextSave.money.field.episode4.value),
+        episode5: String(nextSave.money.field.episode5.value)
+      },
+      battle: {
+        episode4: String(nextSave.money.battle.episode4.value),
+        episode5: String(nextSave.money.battle.episode5.value)
+      }
     });
     setDraftInventory({
-      episode4: buildInventoryDraft(nextSave.inventorySlots.episode4),
-      episode5: buildInventoryDraft(nextSave.inventorySlots.episode5)
+      field: {
+        episode4: buildInventoryDraft(nextSave.inventorySlots.field.episode4),
+        episode5: buildInventoryDraft(nextSave.inventorySlots.field.episode5)
+      },
+      battle: {
+        episode4: buildInventoryDraft(nextSave.inventorySlots.battle.episode4),
+        episode5: buildInventoryDraft(nextSave.inventorySlots.battle.episode5)
+      }
     });
     setDraftParties({
       episode4: nextSave.parties.episode4.members.map((member) => member.code),
@@ -157,7 +251,6 @@ export default function App() {
         nextSave.mercenaries.field.find((mercenary) => mercenary.supported)?.characterCode ??
         null
     );
-    setActiveEditorTab((currentTab) => (currentTab === "battle" && nextSave.type.code !== 1 ? "field" : currentTab));
   }
 
   async function openSaveFromUser() {
@@ -207,20 +300,18 @@ export default function App() {
       return;
     }
 
-    const money = {
-      episode4: Number(draftMoney.episode4.replaceAll(",", "")),
-      episode5: Number(draftMoney.episode5.replaceAll(",", ""))
-    };
-    const inventorySlots = {
-      episode4: parseInventoryDraft(draftInventory.episode4),
-      episode5: parseInventoryDraft(draftInventory.episode5)
-    };
+    const money = buildMoneyEdits(draftMoney);
+    const inventorySlots = buildInventorySlotEdits(draftInventory);
 
-    if (!isValidMoney(money.episode4) || !isValidMoney(money.episode5)) {
+    if (!dataScopes.every((scope) => episodeKeys.every((episode) => isValidMoney(money[scope][episode])))) {
       setStatus("돈 값은 0 이상의 정수여야 합니다.");
       return;
     }
-    if (![...inventorySlots.episode4, ...inventorySlots.episode5].map((item) => item.quantity).every(isValidCount)) {
+    if (
+      !dataScopes
+        .flatMap((scope) => episodeKeys.flatMap((episode) => inventorySlots[scope]![episode]!.map((item) => item.quantity)))
+        .every(isValidCount)
+    ) {
       setStatus("소모품/장비 수량은 0~99 사이의 정수여야 합니다.");
       return;
     }
@@ -267,28 +358,37 @@ export default function App() {
   function updateMoney(value: string) {
     setDraftMoney((current) => ({
       ...current,
-      [activeEpisode]: value
+      [activeDataScope]: {
+        ...current[activeDataScope],
+        [activeEpisode]: value
+      }
     }));
   }
 
   function updateInventoryItem(index: number, value: string) {
     setDraftInventory((current) => ({
       ...current,
-      [activeEpisode]: current[activeEpisode].map((item, itemIndex) =>
-        itemIndex === index ? { ...item, quantity: value } : item
-      )
+      [activeDataScope]: {
+        ...current[activeDataScope],
+        [activeEpisode]: current[activeDataScope][activeEpisode].map((item, itemIndex) =>
+          itemIndex === index ? { ...item, quantity: value } : item
+        )
+      }
     }));
   }
 
   function deleteInventoryItem(index: number) {
     setDraftInventory((current) => ({
       ...current,
-      [activeEpisode]: current[activeEpisode].filter((_, itemIndex) => itemIndex !== index)
+      [activeDataScope]: {
+        ...current[activeDataScope],
+        [activeEpisode]: current[activeDataScope][activeEpisode].filter((_, itemIndex) => itemIndex !== index)
+      }
     }));
   }
 
   function addInventoryItem(item: InventoryCatalogItem) {
-    const currentItems = draftInventory[activeEpisode];
+    const currentItems = draftInventory[activeDataScope][activeEpisode];
     if (currentItems.some((currentItem) => currentItem.itemCode === item.code)) {
       window.alert("이미 인벤토리에 추가된 항목입니다.");
       setStatus("이미 인벤토리에 추가된 항목입니다.");
@@ -296,7 +396,10 @@ export default function App() {
     }
     setDraftInventory((current) => ({
       ...current,
-      [activeEpisode]: [...current[activeEpisode], { itemCode: item.code, quantity: "1" }]
+      [activeDataScope]: {
+        ...current[activeDataScope],
+        [activeEpisode]: [...current[activeDataScope][activeEpisode], { itemCode: item.code, quantity: "1" }]
+      }
     }));
     return true;
   }
@@ -344,6 +447,42 @@ export default function App() {
       };
     });
   }
+
+  function updateCharacterEquipmentSlot(characterCode: number, slot: EquipmentSlotKey, value: number) {
+    setDraftEquipment((current) => ({
+      ...current,
+      [activeDataScope]: {
+        ...current[activeDataScope],
+        [characterCode]: {
+          ...(current[activeDataScope][characterCode] ?? {}),
+          [slot]: value
+        } as DraftEquipmentEntry
+      }
+    }));
+  }
+
+  function updateCharacterWeaponDetail(
+    characterCode: number,
+    key: CharacterDetailKey,
+    value: number
+  ) {
+    setDraftEquipment((current) => ({
+      ...current,
+      [activeDataScope]: {
+        ...current[activeDataScope],
+        [characterCode]: {
+          ...(current[activeDataScope][characterCode] ?? {}),
+          [key]: value
+        } as DraftEquipmentEntry
+      }
+    }));
+  }
+
+  useEffect(() => {
+    if (activePartyCodes.length > 0 && (selectedEquipmentCode === null || !activePartyCodes.includes(selectedEquipmentCode))) {
+      setSelectedEquipmentCode(activePartyCodes[0]);
+    }
+  }, [activePartyCodes, selectedEquipmentCode]);
 
   useEffect(() => {
     const api = window.g3p2SaveEditor;
@@ -414,14 +553,15 @@ export default function App() {
         </div>
       </header>
       <div className="tabs episode-tabs" role="tablist" aria-label="에피소드 선택">
-        {(["episode4", "episode5"] as EpisodeKey[]).map((episode) => (
+        {mainTabs.map((tab) => (
           <button
-            key={episode}
+            key={tab.key}
             type="button"
-            className={activeEpisode === episode ? "active" : ""}
-            onClick={() => setActiveEpisode(episode)}
+            className={activeMainTab === tab.key ? "active" : ""}
+            disabled={Boolean(save && tab.scope === "battle" && save.type.code !== 1)}
+            onClick={() => setActiveMainTab(tab.key)}
           >
-            {episodeLabels[episode]}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -432,9 +572,9 @@ export default function App() {
             save={save}
             episode={activeEpisode}
             money={activeMoney}
-            draftMoneyValue={draftMoney[activeEpisode]}
-            draftInventory={draftInventory[activeEpisode]}
-            originalInventory={save?.inventorySlots[activeEpisode] ?? []}
+            draftMoneyValue={draftMoney[activeDataScope][activeEpisode]}
+            draftInventory={draftInventory[activeDataScope][activeEpisode]}
+            originalInventory={save?.inventorySlots[activeDataScope][activeEpisode] ?? []}
             onMoneyChange={updateMoney}
             onInventoryChange={updateInventoryItem}
             onInventoryDelete={deleteInventoryItem}
@@ -446,6 +586,7 @@ export default function App() {
           <PartyEditor
             party={activeParty}
             codes={activePartyCodes}
+            readOnly={activeDataScope === "battle"}
             selectedCode={selectedEquipmentCode}
             onAdd={addPartyMember}
             onRemove={removePartyMember}
@@ -456,15 +597,14 @@ export default function App() {
 
         <aside className="equipment-column">
           <div className="editor-tabs" role="tablist" aria-label="편집 항목 선택">
-            {(["field", "battle"] as EditorTab[]).map((tab) => (
+            {(["appearance", "equipment"] as CharacterEditorTab[]).map((tab) => (
               <button
                 key={tab}
                 type="button"
-                className={activeEditorTab === tab ? "active" : ""}
-                disabled={tab === "battle" && save?.type.code !== 1}
-                onClick={() => setActiveEditorTab(tab)}
+                className={activeCharacterTab === tab ? "active" : ""}
+                onClick={() => setActiveCharacterTab(tab)}
               >
-                {editorTabLabels[tab]}
+                {characterEditorTabLabels[tab]}
               </button>
             ))}
           </div>
@@ -476,64 +616,59 @@ export default function App() {
               </div>
             </div>
 
-            <div className="equipment-slots">
-              <div className="inventory-section-heading">
-                <span>군단</span>
-              </div>
-            </div>
+            {activeCharacterTab === "appearance" ? (
+              <>
+                <EquipmentEditor
+                  mode="appearance"
+                  save={save}
+                  scope={activeDataScope}
+                  selectedCode={selectedEquipmentCode}
+                  draftEquipment={draftEquipment[activeDataScope]}
+                  onChange={updateCharacterEquipmentSlot}
+                  onWeaponDetailChange={updateCharacterWeaponDetail}
+                />
+              </>
+            ) : (
+              <>
+                <div className="equipment-slots">
+                  <div className="inventory-section-heading">
+                    <span>군단</span>
+                  </div>
+                </div>
 
-            <MercenaryEditor
-                save={save}
-                scope={activeEditorTab}
-                selectedCode={selectedEquipmentCode}
-                draftMercenaries={draftMercenaries[activeEditorTab]}
-                onChange={(characterCode, value) => {
-                  setDraftMercenaries((current) => ({
-                    ...current,
-                    [activeEditorTab]: {
-                      ...current[activeEditorTab],
-                      [characterCode]: value
-                    }
-                  }));
-                }}
-            />
+                <MercenaryEditor
+                  save={save}
+                  scope={activeDataScope}
+                  selectedCode={selectedEquipmentCode}
+                  draftMercenaries={draftMercenaries[activeDataScope]}
+                  onChange={(characterCode, value) => {
+                    setDraftMercenaries((current) => ({
+                      ...current,
+                      [activeDataScope]: {
+                        ...current[activeDataScope],
+                        [characterCode]: value
+                      }
+                    }));
+                  }}
+                />
 
-            <div className="equipment-slots">
-              <div className="inventory-section-heading">
-                <span>장비</span>
-              </div>
-            </div>
+                <div className="equipment-slots">
+                  <div className="inventory-section-heading">
+                    <span>장비</span>
+                  </div>
+                </div>
 
-            <EquipmentEditor
-              save={save}
-              scope={activeEditorTab}
-              selectedCode={selectedEquipmentCode}
-              draftEquipment={draftEquipment[activeEditorTab]}
-              onChange={(characterCode, slot, value) => {
-                setDraftEquipment((current) => ({
-                  ...current,
-                  [activeEditorTab]: {
-                    ...current[activeEditorTab],
-                    [characterCode]: {
-                      ...(current[activeEditorTab][characterCode] ?? {}),
-                      [slot]: value
-                    } as DraftEquipmentEntry
-                  }
-                }));
-              }}
-              onWeaponDetailChange={(characterCode, key, value) => {
-                setDraftEquipment((current) => ({
-                  ...current,
-                  [activeEditorTab]: {
-                    ...current[activeEditorTab],
-                    [characterCode]: {
-                      ...(current[activeEditorTab][characterCode] ?? {}),
-                      [key]: value
-                    } as DraftEquipmentEntry
-                  }
-                }));
-              }}
-            />
+                <EquipmentEditor
+                  mode="equipment"
+                  save={save}
+                  scope={activeDataScope}
+                  selectedCode={selectedEquipmentCode}
+                  draftEquipment={draftEquipment[activeDataScope]}
+                  onChange={updateCharacterEquipmentSlot}
+                  onWeaponDetailChange={updateCharacterWeaponDetail}
+                />
+              </>
+            )}
           </div>
         </aside>
       </section>
@@ -635,7 +770,7 @@ function InventoryEditor({
   const originalByCode = useMemo(() => {
     return new Map(originalInventory.map((item) => [item.itemCode, item]));
   }, [originalInventory]);
-  const supported = Boolean(save);
+  const supported = Boolean(save && money?.supported);
 
   return (
     <article className="equipment-card inventory-card">
@@ -661,6 +796,7 @@ function InventoryEditor({
             value={draftMoneyValue}
             onChange={(event) => onMoneyChange(event.target.value)}
             placeholder="99999"
+            disabled={!supported}
           />
         </div>
 
@@ -1085,6 +1221,7 @@ function ItemInfoModal({ onClose }: { onClose: () => void }) {
 function PartyEditor({
   party,
   codes,
+  readOnly = false,
   selectedCode,
   onAdd,
   onRemove,
@@ -1093,6 +1230,7 @@ function PartyEditor({
 }: {
   party?: PartyInfo;
   codes: number[];
+  readOnly?: boolean;
   selectedCode: number | null;
   onAdd: (code: number) => void;
   onRemove: (index: number) => void;
@@ -1106,7 +1244,7 @@ function PartyEditor({
     <article className="party-card">
       <div className="section-title">
         <div>
-          <h2>파티</h2>
+          <h2>{readOnly ? "출격 유닛" : "파티"}</h2>
         </div>
         <strong>{codes.length}명</strong>
       </div>
@@ -1114,12 +1252,12 @@ function PartyEditor({
       <div className="party-lists">
         <section className="party-list-panel current-party">
           <div className="list-heading">
-            <span>현재 파티</span>
-            <small>드래그해서 순서 변경</small>
+            <span>{readOnly ? "전투 데이터" : "현재 파티"}</span>
+            <small>{readOnly ? "실제 전투 유닛 기준" : "드래그해서 순서 변경"}</small>
           </div>
 
           {codes.length === 0 ? (
-            <p className="empty">등록된 파티원이 없습니다.</p>
+            <p className="empty">{readOnly ? "확인된 출격 유닛이 없습니다." : "등록된 파티원이 없습니다."}</p>
           ) : (
             <ol className="party-member-list">
               {codes.map((code, index) => (
@@ -1130,18 +1268,27 @@ function PartyEditor({
                     dragIndex === index ? "dragging" : "",
                     selectedCode === code ? "selected" : ""
                   ].join(" ")}
-                  draggable
+                  draggable={!readOnly}
                   onClick={() => onSelect(code)}
                   onDragStart={(event) => {
+                    if (readOnly) {
+                      return;
+                    }
                     setDragIndex(index);
                     event.dataTransfer.effectAllowed = "move";
                     event.dataTransfer.setData("text/plain", String(index));
                   }}
                   onDragOver={(event) => {
+                    if (readOnly) {
+                      return;
+                    }
                     event.preventDefault();
                     event.dataTransfer.dropEffect = "move";
                   }}
                   onDrop={(event) => {
+                    if (readOnly) {
+                      return;
+                    }
                     event.preventDefault();
                     const sourceIndex = dragIndex ?? Number(event.dataTransfer.getData("text/plain"));
                     onMove(sourceIndex, index);
@@ -1155,21 +1302,25 @@ function PartyEditor({
                     <span className="member-name">{CHARACTER_NAMES.get(code) ?? `알 수 없음 (${code})`}</span>
                     <small className="member-code">code {code}</small>
                   </span>
-                  <button type="button" className="danger-button" onClick={() => onRemove(index)}>
-                    삭제
-                  </button>
+                  {readOnly ? null : (
+                    <button type="button" className="danger-button" onClick={() => onRemove(index)}>
+                      삭제
+                    </button>
+                  )}
                 </li>
               ))}
             </ol>
           )}
         </section>
 
-        <button type="button" className="inventory-add-button" onClick={() => setPickerOpen(true)} disabled={codes.length >= PARTY_MEMBER_LIMIT}>
-          파티원 추가
-        </button>
+        {readOnly ? null : (
+          <button type="button" className="inventory-add-button" onClick={() => setPickerOpen(true)} disabled={codes.length >= PARTY_MEMBER_LIMIT}>
+            파티원 추가
+          </button>
+        )}
       </div>
 
-      {pickerOpen ? (
+      {pickerOpen && !readOnly ? (
         <PartyPicker
           currentCodes={codes}
           onClose={() => setPickerOpen(false)}
@@ -1331,6 +1482,7 @@ function PartyPicker({
 }
 
 function EquipmentEditor({
+  mode,
   save,
   scope,
   selectedCode,
@@ -1338,6 +1490,7 @@ function EquipmentEditor({
   onChange,
   onWeaponDetailChange
 }: {
+  mode: CharacterEditorTab;
   save: SaveInfo | null;
   scope: EquipmentScope;
   selectedCode: number | null;
@@ -1345,11 +1498,12 @@ function EquipmentEditor({
   onChange: (characterCode: number, slot: EquipmentSlotKey, value: number) => void;
   onWeaponDetailChange: (
     characterCode: number,
-    key: "weaponAttackType" | "weaponPicType" | "weaponType",
+    key: CharacterDetailKey,
     value: number
   ) => void;
 }) {
   const [pickerSlot, setPickerSlot] = useState<EquipmentSlotKey | null>(null);
+  const [presetPickerOpen, setPresetPickerOpen] = useState(false);
   const equipmentByCode = useMemo(() => {
     return new Map(save?.equipment[scope].map((equipment) => [equipment.characterCode, equipment]) ?? []);
   }, [save, scope]);
@@ -1365,93 +1519,75 @@ function EquipmentEditor({
         <p className="empty">왼쪽 파티 목록에서 캐릭터를 선택하세요.</p>
       ) : currentEquipment.supported && selectedDraft ? (
         <div className="equipment-slots">
-          {EQUIPMENT_SLOT_DEFINITIONS.map((slot) => {
-            const slotInfo = currentEquipment.slots.find((item) => item.key === slot.key);
-            const value = selectedDraft[slot.key] ?? slotInfo?.value ?? 0;
-            const options = getEquipmentSelectOptions(slot.key, value);
-            const selectedOption = options.find((option) => option.code === value);
-            const isUnknownEquipment = !selectedOption || selectedOption.name === "현재 저장값";
-            const selectedName = value === 0 ? "장비 해제" : selectedOption?.name ?? "현재 저장값";
-            const selectedStats = value === 0 ? undefined : isUnknownEquipment ? `code ${value}` : getItemStatText(selectedName);
-            return (
-              <div key={slot.key} className="equipment-entry">
-                <div className="equipment-row">
-                  <ItemIcon
-                    item={
-                      value === 0
-                        ? { code: 0, category: slot.key }
-                        : selectedOption && !isUnknownEquipment
-                          ? { ...selectedOption, category: slot.key }
-                          : { code: value, category: slot.key, unknown: true }
-                    }
-                  />
-                  <div className="equipment-row-main">
-                    <strong>{selectedName}</strong>
-                    {selectedStats ? <small className="item-stat-text">{selectedStats}</small> : null}
+          {mode === "equipment"
+            ? EQUIPMENT_SLOT_DEFINITIONS.map((slot) => {
+                const slotInfo = currentEquipment.slots.find((item) => item.key === slot.key);
+                const value = selectedDraft[slot.key] ?? slotInfo?.value ?? 0;
+                const options = getEquipmentSelectOptions(slot.key, value);
+                const selectedOption = options.find((option) => option.code === value);
+                const isUnknownEquipment = !selectedOption || selectedOption.name === "현재 저장값";
+                const selectedName = value === 0 ? "장비 해제" : selectedOption?.name ?? "현재 저장값";
+                const selectedStats = value === 0 ? undefined : isUnknownEquipment ? `code ${value}` : getItemStatText(selectedName);
+                return (
+                  <div key={slot.key} className="equipment-entry">
+                    <div className="equipment-row">
+                      <ItemIcon
+                        item={
+                          value === 0
+                            ? { code: 0, category: slot.key }
+                            : selectedOption && !isUnknownEquipment
+                              ? { ...selectedOption, category: slot.key }
+                              : { code: value, category: slot.key, unknown: true }
+                        }
+                      />
+                      <div className="equipment-row-main">
+                        <strong>{selectedName}</strong>
+                        {selectedStats ? <small className="item-stat-text">{selectedStats}</small> : null}
+                      </div>
+                      <button type="button" className="equipment-change-button" onClick={() => setPickerSlot(slot.key)}>
+                        변경
+                      </button>
+                    </div>
                   </div>
-                  <button type="button" className="equipment-change-button" onClick={() => setPickerSlot(slot.key)}>
-                    변경
-                  </button>
-                </div>
+                );
+              })
+            : null}
+          {mode === "appearance" ? (
+            <div className="equipment-detail-selects">
+              <div className="inventory-section-heading">
+                <span>캐릭터 외형</span>
               </div>
-            );
-          })}
-          <div className="equipment-detail-selects">
-            <label className="equipment-field">
-              <span>무기 공격 타입</span>
-              <select
-                value={selectedDraft.weaponAttackType ?? currentEquipment.weaponAttackType?.value ?? 0}
-                onChange={(event) =>
-                  onWeaponDetailChange(currentEquipment.characterCode, "weaponAttackType", Number(event.target.value))
-                }
-              >
-                {getWeaponDetailOptions(
-                  WEAPON_ATTACK_TYPE_OPTIONS,
-                  selectedDraft.weaponAttackType ?? currentEquipment.weaponAttackType?.value ?? 0
-                ).map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.code} - {option.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="equipment-field">
-              <span>무기 타입</span>
-              <select
-                value={selectedDraft.weaponType ?? currentEquipment.weaponType?.value ?? 0}
-                onChange={(event) =>
-                  onWeaponDetailChange(currentEquipment.characterCode, "weaponType", Number(event.target.value))
-                }
-              >
-                {getWeaponDetailOptions(
-                  WEAPON_TYPE_OPTIONS,
-                  selectedDraft.weaponType ?? currentEquipment.weaponType?.value ?? 0
-                ).map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.code} - {option.name}
-                  </option>
-                ))}
-              </select>
-            </label>            
-            <label className="equipment-field">
-              <span>무기 그림 타입</span>
-              <select
-                value={selectedDraft.weaponPicType ?? currentEquipment.weaponPicType?.value ?? 0}
-                onChange={(event) =>
-                  onWeaponDetailChange(currentEquipment.characterCode, "weaponPicType", Number(event.target.value))
-                }
-              >
-                {getWeaponDetailOptions(
-                  WEAPON_PIC_OPTIONS,
-                  selectedDraft.weaponPicType ?? currentEquipment.weaponPicType?.value ?? 0
-                ).map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.code} - {option.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+              {getCharacterDetailFields("character").map((field) => (
+                <CharacterDetailSelect
+                  key={field.key}
+                  field={field}
+                  value={selectedDraft[field.key] ?? currentEquipment[field.key]?.value ?? 0}
+                  characterCode={currentEquipment.characterCode}
+                  onChange={onWeaponDetailChange}
+                />
+              ))}
+
+              <div className="inventory-section-heading">
+                <span>무기 외형</span>
+              </div>
+              {getCharacterDetailFields("weapon").map((field) => (
+                <CharacterDetailSelect
+                  key={field.key}
+                  field={field}
+                  value={selectedDraft[field.key] ?? currentEquipment[field.key]?.value ?? 0}
+                  characterCode={currentEquipment.characterCode}
+                  onChange={onWeaponDetailChange}
+                />
+              ))}
+
+              <div className="inventory-section-heading">
+                <span>프리셋</span>
+              </div>
+              <button type="button" className="inventory-review-button" onClick={() => setPresetPickerOpen(true)}>
+                프리셋 선택
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="equipment-note unsupported">
@@ -1470,7 +1606,108 @@ function EquipmentEditor({
           }}
         />
       ) : null}
+      {presetPickerOpen && currentEquipment?.supported ? (
+        <AppearancePresetPicker
+          onClose={() => setPresetPickerOpen(false)}
+          onSelect={(preset) => {
+            for (const [key, value] of Object.entries(preset.values) as Array<[CharacterDetailKey, number]>) {
+              onWeaponDetailChange(currentEquipment.characterCode, key, value);
+            }
+            setPresetPickerOpen(false);
+          }}
+        />
+      ) : null}
     </article>
+  );
+}
+
+function CharacterDetailSelect({
+  field,
+  value,
+  characterCode,
+  onChange
+}: {
+  field: CharacterDetailField;
+  value: number;
+  characterCode: number;
+  onChange: (characterCode: number, key: CharacterDetailKey, value: number) => void;
+}) {
+  return (
+    <label className="equipment-field">
+      <span>{field.label}</span>
+      <select value={value} onChange={(event) => onChange(characterCode, field.key, Number(event.target.value))}>
+        {getWeaponDetailOptions(field.options, value).map((option) => (
+          <option key={option.code} value={option.code}>
+            {option.code} - {option.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function AppearancePresetPicker({
+  onClose,
+  onSelect
+}: {
+  onClose: () => void;
+  onSelect: (preset: CharacterAppearancePreset) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
+  const presets = characterAppearancePresets.filter((preset) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+    return (
+      preset.name.toLowerCase().includes(normalizedQuery) ||
+      preset.id.toLowerCase().includes(normalizedQuery) ||
+      String(preset.code).includes(normalizedQuery)
+    );
+  });
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="item-picker appearance-preset-picker"
+        role="dialog"
+        aria-modal="true"
+        aria-label="외형 프리셋 선택"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="item-picker-header">
+          <div>
+            <h2>외형 프리셋 선택</h2>
+          </div>
+          <button type="button" className="secondary-button" onClick={onClose}>
+            닫기
+          </button>
+        </header>
+
+        <div className="item-picker-body single-pane-picker">
+          <section className="item-picker-results">
+            <input
+              className="item-picker-search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="이름 또는 코드 검색"
+            />
+            <div className="item-picker-list">
+              {presets.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className="item-picker-row appearance-preset-row"
+                  onClick={() => onSelect(preset)}
+                >
+                  <span>{preset.name}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1939,6 +2176,9 @@ function getItemIconSrc(
   if (item?.consumableKind === "bomb") {
     return getAssetSrc("item-icons/bomb.png");
   }
+  if (item?.consumableKind === "green-liquid") {
+    return getAssetSrc("item-icons/green-liquid.png");
+  }
   if (item?.category === "armor") {
     return getAssetSrc("item-icons/armor.png");
   }
@@ -2049,6 +2289,11 @@ function buildEquipmentDraft(equipment?: CharacterEquipmentInfo): DraftEquipment
 
   return {
     ...(Object.fromEntries(equipment.slots.map((slot) => [slot.key, slot.value])) as Record<EquipmentSlotKey, number>),
+    face: equipment.face?.value,
+    name: equipment.name?.value,
+    job: equipment.job?.value,
+    voice: equipment.voice?.value,
+    body: equipment.body?.value,
     weaponAttackType: equipment.weaponAttackType?.value,
     weaponPicType: equipment.weaponPicType?.value,
     weaponType: equipment.weaponType?.value
@@ -2063,6 +2308,11 @@ function buildEquipmentDrafts(equipment: CharacterEquipmentInfo[]): Record<numbe
         item.characterCode,
         {
           ...(Object.fromEntries(item.slots.map((slot) => [slot.key, slot.value])) as Record<EquipmentSlotKey, number>),
+          face: item.face?.value,
+          name: item.name?.value,
+          job: item.job?.value,
+          voice: item.voice?.value,
+          body: item.body?.value,
           weaponAttackType: item.weaponAttackType?.value,
           weaponPicType: item.weaponPicType?.value,
           weaponType: item.weaponType?.value
@@ -2089,6 +2339,11 @@ function buildEquipmentEdits(
       .map((item) => ({
         characterCode: item.characterCode,
         scope,
+        face: draftEquipment[scope][item.characterCode].face ?? item.face?.value ?? 0,
+        name: draftEquipment[scope][item.characterCode].name ?? item.name?.value ?? 0,
+        job: draftEquipment[scope][item.characterCode].job ?? item.job?.value ?? 0,
+        voice: draftEquipment[scope][item.characterCode].voice ?? item.voice?.value ?? 0,
+        body: draftEquipment[scope][item.characterCode].body ?? item.body?.value ?? 0,
         weaponAttackType:
           draftEquipment[scope][item.characterCode].weaponAttackType ?? item.weaponAttackType?.value ?? 0,
         weaponPicType:
@@ -2115,6 +2370,26 @@ function getWeaponDetailOptions(
   return [{ code: currentValue, name: "현재 저장값" }, ...options];
 }
 
+function getCharacterDetailFields(group?: "character" | "weapon"): CharacterDetailField[] {
+  const fields: CharacterDetailField[] = [
+    { key: "face", label: "얼굴", options: CHARACTER_FACE_OPTIONS },
+    { key: "name", label: "이름", options: CHARACTER_NAME_OPTIONS },
+    { key: "job", label: "직업", options: CHARACTER_JOB_OPTIONS },
+    { key: "voice", label: "목소리", options: CHARACTER_VOICE_OPTIONS },
+    { key: "body", label: "체형", options: CHARACTER_BODY_OPTIONS },
+    { key: "weaponAttackType", label: "무기 공격 타입", options: WEAPON_ATTACK_TYPE_OPTIONS },
+    { key: "weaponType", label: "무기 타입", options: WEAPON_TYPE_OPTIONS },
+    { key: "weaponPicType", label: "무기 그림 타입", options: WEAPON_PIC_OPTIONS }
+  ];
+  if (group === "character") {
+    return fields.slice(0, 5);
+  }
+  if (group === "weapon") {
+    return fields.slice(5);
+  }
+  return fields;
+}
+
 function buildMercenaryEdits(
   mercenaries: SaveInfo["mercenaries"],
   draftMercenaries: DraftMercenaries
@@ -2137,11 +2412,45 @@ function buildInventoryDraft(inventory: InventorySlotInfo[]): DraftInventorySlot
   }));
 }
 
+function buildMoneyEdits(draftMoney: DraftMoney): SaveEditRequest["money"] {
+  return {
+    field: {
+      episode4: Number(draftMoney.field.episode4.replaceAll(",", "")),
+      episode5: Number(draftMoney.field.episode5.replaceAll(",", ""))
+    },
+    battle: {
+      episode4: Number(draftMoney.battle.episode4.replaceAll(",", "")),
+      episode5: Number(draftMoney.battle.episode5.replaceAll(",", ""))
+    }
+  };
+}
+
+function buildInventorySlotEdits(draftInventory: DraftInventory): NonNullable<SaveEditRequest["inventorySlots"]> {
+  return {
+    field: {
+      episode4: parseInventoryDraft(draftInventory.field.episode4),
+      episode5: parseInventoryDraft(draftInventory.field.episode5)
+    },
+    battle: {
+      episode4: parseInventoryDraft(draftInventory.battle.episode4),
+      episode5: parseInventoryDraft(draftInventory.battle.episode5)
+    }
+  };
+}
+
 function parseInventoryDraft(inventory: DraftInventorySlot[]): InventorySlotEdit[] {
   return inventory.map((item) => ({
     itemCode: item.itemCode,
     quantity: item.quantity === "" ? 0 : Number(item.quantity.replaceAll(",", ""))
   }));
+}
+
+function getInitialMainTab(save: SaveInfo): MainTabKey {
+  const episode = save.episode.label === "에피소드5" ? "episode5" : "episode4";
+  if (save.type.code === 1) {
+    return episode === "episode5" ? "episode5Battle" : "episode4Battle";
+  }
+  return episode === "episode5" ? "episode5Field" : "episode4Field";
 }
 
 function isValidMoney(value: number): boolean {
