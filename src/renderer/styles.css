@@ -6,6 +6,10 @@
   --editor-panel-height-tabbed: 710px;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -151,6 +155,7 @@ h1 {
 .equipment-column {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 
 .file-panel,
@@ -285,7 +290,7 @@ h1 {
 
 .editor-tabs {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
 }
 
@@ -607,6 +612,7 @@ h1 {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   padding: 22px;
+  width: 100%;
   height: var(--editor-panel-height);
   min-height: 0;
 }
@@ -869,6 +875,48 @@ h1 {
   gap: 6px;
 }
 
+.appearance-picker-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #1f2933;
+  text-align: left;
+}
+
+.appearance-picker-button:hover {
+  border-color: #007c78;
+  background: #f2fbfb;
+}
+
+.appearance-picker-main {
+  display: contents;
+  min-width: 0;
+}
+
+.appearance-picker-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appearance-picker-main small {
+  color: #6b7280;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.appearance-picker-action {
+  display: none;
+}
+
 .equipment-entry {
   display: grid;
   gap: 4px;
@@ -933,7 +981,7 @@ h1 {
 .equipment-field span {
   color: #6b7280;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .equipment-field select {
@@ -944,6 +992,50 @@ h1 {
   padding: 0 10px;
   background: white;
   color: #1f2933;
+}
+
+.stat-editor {
+  gap: 10px;
+}
+
+.stat-field {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.stat-field input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #1f2933;
+  text-align: right;
+}
+
+.stat-field input:disabled {
+  background: #f8fafc;
+  color: #9ca3af;
+}
+
+.stat-divider {
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.stat-pair-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.stat-pair-separator {
+  color: #9ca3af;
+  font-weight: 800;
 }
 
 .mercenary-option-list {

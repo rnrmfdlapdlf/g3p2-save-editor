@@ -163,6 +163,40 @@ export type CharacterMercenaryInfo = {
   raw?: string;
 };
 
+export type CharacterStatKey =
+  | "level"
+  | "levelExp"
+  | "exp"
+  | "lp"
+  | "hp"
+  | "psy"
+  | "tpMax"
+  | "stp"
+  | "ctp"
+  | "dep"
+  | "dex"
+  | "soulCurrent"
+  | "tpCurrent";
+
+export type CharacterStatFieldInfo = {
+  key: CharacterStatKey;
+  label: string;
+  offset?: number;
+  value?: number;
+  raw?: string;
+  editable: boolean;
+  note?: string;
+};
+
+export type CharacterStatsInfo = {
+  characterCode: number;
+  characterName: string;
+  scope: EquipmentScope;
+  supported: boolean;
+  note?: string;
+  fields: CharacterStatFieldInfo[];
+};
+
 export type SaveTypeLabel = "연대표" | "챕터" | "전투" | "알 수 없음";
 export type SaveEpisodeLabel = "미선택" | "에피소드4" | "에피소드5";
 
@@ -193,6 +227,7 @@ export type SaveInfo = {
   parties: Record<EpisodeKey, PartyInfo>;
   equipment: Record<EquipmentScope, CharacterEquipmentInfo[]>;
   mercenaries: Record<EquipmentScope, CharacterMercenaryInfo[]>;
+  stats: Record<EquipmentScope, CharacterStatsInfo[]>;
 };
 
 export type CharacterEquipmentEdit = {
@@ -215,6 +250,12 @@ export type CharacterMercenaryEdit = {
   value: number;
 };
 
+export type CharacterStatsEdit = {
+  characterCode: number;
+  scope: EquipmentScope;
+  values: Partial<Record<CharacterStatKey, number>>;
+};
+
 export type SaveEditRequest = {
   money: Record<SaveDataScope, Record<EpisodeKey, number>>;
   inventory?: Partial<Record<SaveDataScope, Partial<Record<EpisodeKey, Partial<Record<InventoryItemKey, number>>>>>>;
@@ -222,6 +263,7 @@ export type SaveEditRequest = {
   parties: Record<EpisodeKey, number[]>;
   equipment?: CharacterEquipmentEdit[];
   mercenaries?: CharacterMercenaryEdit[];
+  stats?: CharacterStatsEdit[];
 };
 
 type InventoryTable = { startOffset: number; countOffset: number };
@@ -396,6 +438,7 @@ export const WEAPON_TYPE_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 17, name: "술병" },
   { code: 9, name: "요요" },
   { code: 16, name: "아수라" },
+  { code: 13583, name: "건 슬라이서/핸드건" },
 ];
 
 export const WEAPON_ATTACK_TYPE_OPTIONS: Array<{ code: number; name: string }> = [
@@ -500,6 +543,7 @@ export const CHARACTER_NAME_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 2392, name: "젠" },
   { code: 2423, name: "슈로 위장한 진" },
   { code: 2567, name: "나야트레이" },
+  // { code: 2907, name: "하이델룬" },
 ];
 
 export const CHARACTER_JOB_OPTIONS: Array<{ code: number; name: string }> = [
@@ -557,14 +601,15 @@ export const CHARACTER_JOB_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 2257, name: "베델친위대" },
   { code: 2258, name: "안드로이드" },
   { code: 2259, name: "강화아델룬" },
-  { code: 2347, name: "소매치기" }
+  { code: 2347, name: "소매치기" },
+  { code: 2841, name: "없음" }
 ];
 
 export const CHARACTER_VOICE_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 0, name: "없음" },
   { code: 1, name: "죠안" },
   { code: 2, name: "제이슨" },
-  { code: 3, name: "블랙스피어스(해골, 유령)" },
+  { code: 3, name: "블랙 스피어스" },
   { code: 4, name: "해적" },
   { code: 5, name: "진(슈)" },
   { code: 6, name: "아만딘" },
@@ -628,7 +673,7 @@ export const CHARACTER_BODY_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 1165, name: "하이델룬" },
   { code: 1166, name: "슈" },
   { code: 1167, name: "진" },
-  { code: 1185, name: "살라딘 (커터칼)" },
+  { code: 1185, name: "살라딘 (크로슬리 커스텀)" },
   { code: 1205, name: "디에네 (에피소드5)" },
   { code: 1218, name: "나탈리" },
   { code: 1259, name: "손나딘" },
@@ -638,7 +683,8 @@ export const CHARACTER_BODY_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 1307, name: "레제드람" },
   { code: 1308, name: "루칼드" },
   { code: 1309, name: "로브" },
-  { code: 1310, name: "바룬" }
+  { code: 1310, name: "바룬" },
+  { code: 1481, name: "흑태자" }
 ];
 
 export const EQUIPMENT_OPTIONS: Record<EquipmentSlotKey, EquipmentOption[]> = {
@@ -933,6 +979,27 @@ const WEAPON_PIC_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x04;
 const WEAPON_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x02;
 const BATTLE_MERCENARY_RELATIVE_OFFSET_FROM_CHARACTER = 0x18;
 const BATTLE_UNIT_SCAN_START_OFFSET = 0xe000;
+const CHARACTER_STAT_DEFINITIONS: Array<{
+  key: CharacterStatKey;
+  label: string;
+  relativeOffset: number;
+  battleOnly?: boolean;
+  signed?: boolean;
+}> = [
+  { key: "level", label: "LEVEL", relativeOffset: 0x28 },
+  { key: "levelExp", label: "LEVEL EXP", relativeOffset: 0x2a },
+  { key: "exp", label: "EXP", relativeOffset: 0x2c },
+  { key: "lp", label: "LP / 최대 HP", relativeOffset: 0x30 },
+  { key: "hp", label: "현재 HP", relativeOffset: 0x34 },
+  { key: "psy", label: "PSY", relativeOffset: 0x38 },
+  { key: "tpMax", label: "최대 TP", relativeOffset: 0x3a },
+  { key: "stp", label: "STP", relativeOffset: 0x3c },
+  { key: "ctp", label: "CTP", relativeOffset: 0x3e },
+  { key: "dep", label: "DEP", relativeOffset: 0x40 },
+  { key: "dex", label: "DEX", relativeOffset: 0x42 },
+  { key: "soulCurrent", label: "현재 SOUL", relativeOffset: 0x3cb, battleOnly: true },
+  { key: "tpCurrent", label: "현재 TP", relativeOffset: 0x3cd, battleOnly: true, signed: true }
+];
 const FIELD_CHARACTER_RECORD_INDICES: Record<number, number> = {
   236: 0,
   237: 1,
@@ -1015,6 +1082,10 @@ export function parseSave(data: Uint8Array, filePath: string): SaveInfo {
     mercenaries: {
       field: readMercenaries(data, "field"),
       battle: readMercenaries(data, "battle")
+    },
+    stats: {
+      field: readCharacterStatsList(data, "field"),
+      battle: readCharacterStatsList(data, "battle")
     }
   };
 }
@@ -1055,6 +1126,7 @@ export function applySaveEdits(data: Uint8Array, edits: SaveEditRequest): void {
   applyParty(data, "episode5", edits.parties.episode5);
   applyEquipmentEdits(data, edits.equipment ?? []);
   applyMercenaryEdits(data, edits.mercenaries ?? []);
+  applyCharacterStatsEdits(data, edits.stats ?? []);
   writeUint16(data, data.length - 2, calculateChecksum(data));
 }
 
@@ -1852,6 +1924,118 @@ function getMercenaryOffset(data: Uint8Array, characterCode: number, scope: Equi
   return mercenaryOffset + 4 <= data.length ? mercenaryOffset : null;
 }
 
+function readCharacterStatsList(data: Uint8Array, scope: EquipmentScope): CharacterStatsInfo[] {
+  if (scope === "field") {
+    return readFieldCharacterCodes(data).map((characterCode) => readCharacterStats(data, characterCode, scope));
+  }
+
+  const locationCode = readInverseUint32(data, 0x0c);
+  if (locationCode !== 1) {
+    return [];
+  }
+
+  const battleCharacterCodes = readBattleCharacterCodes(data);
+  if (battleCharacterCodes.length > 0) {
+    return battleCharacterCodes.map((characterCode) => readCharacterStats(data, characterCode, scope));
+  }
+
+  const activeParty = readParty(data, getActiveEpisodeKey(data));
+  return activeParty.members.map((member) => readCharacterStats(data, member.code, scope));
+}
+
+function readCharacterStats(data: Uint8Array, characterCode: number, scope: EquipmentScope): CharacterStatsInfo {
+  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const baseOffset = getCharacterStatsBaseOffset(data, characterCode, scope);
+
+  if (baseOffset === null) {
+    return {
+      characterCode,
+      characterName,
+      scope,
+      supported: false,
+      note:
+        scope === "battle"
+          ? "전투 스탯 위치가 확인되지 않았거나 전투 세이브가 아닙니다."
+          : "아직 스탯 위치가 확인되지 않은 캐릭터입니다.",
+      fields: buildUnsupportedStatFields(scope)
+    };
+  }
+
+  return {
+    characterCode,
+    characterName,
+    scope,
+    supported: true,
+    fields: CHARACTER_STAT_DEFINITIONS.map((field) => {
+      if (field.battleOnly && scope === "field") {
+        return {
+          key: field.key,
+          label: field.label,
+          editable: false,
+          note: "전투 데이터에서만 확인된 항목입니다."
+        };
+      }
+
+      const offset = baseOffset + field.relativeOffset;
+      const inRange = offset >= 0 && offset + 2 <= data.length;
+      const value = inRange ? readInverseUint16(data, offset) : undefined;
+      return {
+        key: field.key,
+        label: field.label,
+        offset: inRange ? offset : undefined,
+        value: typeof value === "number" && field.signed ? toSignedUint16(value) : value,
+        raw: inRange ? readRawHex(data, offset, 2) : undefined,
+        editable: inRange,
+        note: inRange ? undefined : "오프셋이 세이브 파일 범위를 벗어납니다."
+      };
+    })
+  };
+}
+
+function buildUnsupportedStatFields(scope: EquipmentScope): CharacterStatFieldInfo[] {
+  return CHARACTER_STAT_DEFINITIONS.map((field) => ({
+    key: field.key,
+    label: field.label,
+    editable: false,
+    note: field.battleOnly && scope === "field" ? "전투 데이터에서만 확인된 항목입니다." : undefined
+  }));
+}
+
+function applyCharacterStatsEdits(data: Uint8Array, edits: CharacterStatsEdit[]): void {
+  for (const edit of edits) {
+    const baseOffset = getCharacterStatsBaseOffset(data, edit.characterCode, edit.scope);
+    if (baseOffset === null) {
+      continue;
+    }
+
+    for (const field of CHARACTER_STAT_DEFINITIONS) {
+      if (field.battleOnly && edit.scope === "field") {
+        continue;
+      }
+      const value = edit.values[field.key];
+      if (typeof value !== "number") {
+        continue;
+      }
+      writeInverseUint16(data, baseOffset + field.relativeOffset, field.signed ? fromSignedUint16(value) : value);
+    }
+  }
+}
+
+function getCharacterStatsBaseOffset(data: Uint8Array, characterCode: number, scope: EquipmentScope): number | null {
+  if (scope === "field") {
+    const recordBaseOffset = findFieldCharacterRecordBaseOffset(data, characterCode);
+    return recordBaseOffset === null ? null : recordBaseOffset + FIELD_CHARACTER_CODE_RELATIVE_OFFSET;
+  }
+
+  const equipmentOffset = getEquipmentBaseOffset(data, characterCode, "battle");
+  if (equipmentOffset === null) {
+    return null;
+  }
+
+  const baseOffset = equipmentOffset - EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER;
+  return baseOffset >= 0 && baseOffset + 0x44 <= data.length ? baseOffset : null;
+}
+
 function readInverseUint16(data: Uint8Array, offset: number): number {
   return 0xffff - readUint16(data, offset);
 }
@@ -1861,6 +2045,17 @@ function writeInverseUint16(data: Uint8Array, offset: number, value: number): vo
     throw new Error("장비 값은 0 이상 2바이트 정수 이하여야 합니다.");
   }
   writeUint16(data, offset, 0xffff - value);
+}
+
+function toSignedUint16(value: number): number {
+  return value > 0x7fff ? value - 0x10000 : value;
+}
+
+function fromSignedUint16(value: number): number {
+  if (!Number.isInteger(value) || value < -0x8000 || value > 0x7fff) {
+    throw new Error("signed 2바이트 값은 -32768 이상 32767 이하여야 합니다.");
+  }
+  return value < 0 ? value + 0x10000 : value;
 }
 
 function readInverseUint32(data: Uint8Array, offset: number): number {
