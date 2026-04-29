@@ -1,6 +1,11 @@
 import React, { DragEvent, useEffect, useMemo, useState } from "react";
 import {
+  ABILITY_OPTIONS,
+  AbilityOption,
   applySaveEdits,
+  CharacterAbilitiesEdit,
+  CharacterAbilitiesInfo,
+  CharacterAbilityValueInfo,
   CharacterEquipmentEdit,
   CharacterEquipmentInfo,
   CharacterMercenaryInfo,
@@ -75,6 +80,8 @@ type DraftEquipment = Record<EquipmentScope, Record<number, DraftEquipmentEntry>
 type DraftMercenaries = Record<EquipmentScope, Record<number, number>>;
 type DraftStatsEntry = Partial<Record<CharacterStatKey, string>>;
 type DraftStats = Record<EquipmentScope, Record<number, DraftStatsEntry>>;
+type DraftAbilitiesEntry = Record<number, string>;
+type DraftAbilities = Record<EquipmentScope, Record<number, DraftAbilitiesEntry>>;
 type MainTab = {
   key: string;
   episode: EpisodeKey;
@@ -82,7 +89,7 @@ type MainTab = {
   label: string;
 };
 type MainTabKey = "episode4Field" | "episode5Field" | "episode4Battle" | "episode5Battle";
-type CharacterEditorTab = "appearance" | "stats" | "equipment";
+type CharacterEditorTab = "equipment" | "abilities" | "stats" | "appearance";
 type LoadedSave = {
   save: SaveInfo;
   browserBytes?: Uint8Array | null;
@@ -99,9 +106,10 @@ const mainTabs: Array<MainTab & { key: MainTabKey }> = [
 ];
 
 const characterEditorTabLabels: Record<CharacterEditorTab, string> = {
-  appearance: "외형",
+  equipment: "장비",
+  abilities: "어빌리티",
   stats: "스탯",
-  equipment: "장비"
+  appearance: "외형"
 };
 
 const dataScopes: SaveDataScope[] = ["field", "battle"];
@@ -161,8 +169,9 @@ export default function App() {
   const [draftEquipment, setDraftEquipment] = useState<DraftEquipment>({ field: {}, battle: {} });
   const [draftMercenaries, setDraftMercenaries] = useState<DraftMercenaries>({ field: {}, battle: {} });
   const [draftStats, setDraftStats] = useState<DraftStats>({ field: {}, battle: {} });
+  const [draftAbilities, setDraftAbilities] = useState<DraftAbilities>({ field: {}, battle: {} });
   const [selectedEquipmentCode, setSelectedEquipmentCode] = useState<number | null>(null);
-  const [activeCharacterTab, setActiveCharacterTab] = useState<CharacterEditorTab>("appearance");
+  const [activeCharacterTab, setActiveCharacterTab] = useState<CharacterEditorTab>("equipment");
   const [status, setStatus] = useState(emptySaveStatus);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -197,6 +206,9 @@ export default function App() {
   const statDraftsValid = useMemo(() => {
     return save ? areStatDraftsValid(save.stats, draftStats) : true;
   }, [save, draftStats]);
+  const abilityDraftsValid = useMemo(() => {
+    return save ? areAbilityDraftsValid(save.abilities, draftAbilities) : true;
+  }, [save, draftAbilities]);
   const electronApi = window.g3p2SaveEditor;
   const saveActionLabel = electronApi ? "저장" : "다운로드";
   const canWrite = Boolean(
@@ -204,7 +216,8 @@ export default function App() {
       (electronApi || browserSaveBytes) &&
       allMoneyNumbers.every(isValidMoney) &&
       allInventoryNumbers.every(isValidCount) &&
-      statDraftsValid
+      statDraftsValid &&
+      abilityDraftsValid
   );
 
   async function loadSave(loader: () => Promise<LoadedSave | null>, cancelMessage: string) {
@@ -276,6 +289,10 @@ export default function App() {
       field: buildStatsDrafts(nextSave.stats.field),
       battle: buildStatsDrafts(nextSave.stats.battle)
     });
+    setDraftAbilities({
+      field: buildAbilityDrafts(nextSave.abilities.field),
+      battle: buildAbilityDrafts(nextSave.abilities.battle)
+    });
     setSelectedEquipmentCode(nextSelectedCode);
   }
 
@@ -345,6 +362,10 @@ export default function App() {
       setStatus("스탯 값은 0~65535 사이의 정수여야 합니다. 현재 TP는 -32768~32767 범위를 사용할 수 있습니다.");
       return;
     }
+    if (!areAbilityDraftsValid(save.abilities, draftAbilities)) {
+      setStatus("어빌리티 값은 1~20 또는 255여야 합니다.");
+      return;
+    }
 
     const edits: SaveEditRequest = {
       money,
@@ -352,7 +373,8 @@ export default function App() {
       parties: draftParties,
       equipment: buildEquipmentEdits(save.equipment, draftEquipment),
       mercenaries: buildMercenaryEdits(save.mercenaries, draftMercenaries),
-      stats: buildStatsEdits(save.stats, draftStats)
+      stats: buildStatsEdits(save.stats, draftStats),
+      abilities: buildAbilityEdits(save.abilities, draftAbilities)
     };
     const api = window.g3p2SaveEditor;
     if (!api && !browserSaveBytes) {
@@ -522,6 +544,19 @@ export default function App() {
     }));
   }
 
+  function updateCharacterAbility(characterCode: number, abilityCode: number, value: string) {
+    setDraftAbilities((current) => ({
+      ...current,
+      [activeDataScope]: {
+        ...current[activeDataScope],
+        [characterCode]: {
+          ...(current[activeDataScope][characterCode] ?? {}),
+          [abilityCode]: value
+        }
+      }
+    }));
+  }
+
   useEffect(() => {
     if (activePartyCodes.length > 0 && (selectedEquipmentCode === null || !activePartyCodes.includes(selectedEquipmentCode))) {
       setSelectedEquipmentCode(activePartyCodes[0]);
@@ -641,7 +676,7 @@ export default function App() {
 
         <aside className="equipment-column">
           <div className="editor-tabs" role="tablist" aria-label="편집 항목 선택">
-            {(["appearance", "stats", "equipment"] as CharacterEditorTab[]).map((tab) => (
+            {(["equipment", "abilities", "stats", "appearance"] as CharacterEditorTab[]).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -660,25 +695,31 @@ export default function App() {
               </div>
             </div>
 
-            {activeCharacterTab === "appearance" ? (
-              <>
-                <EquipmentEditor
-                  mode="appearance"
-                  save={save}
-                  scope={activeDataScope}
-                  selectedCode={selectedEquipmentCode}
-                  draftEquipment={draftEquipment[activeDataScope]}
-                  onChange={updateCharacterEquipmentSlot}
-                  onWeaponDetailChange={updateCharacterWeaponDetail}
-                />
-              </>
-            ) : activeCharacterTab === "stats" ? (
+            {activeCharacterTab === "stats" ? (
               <StatsEditor
                 save={save}
                 scope={activeDataScope}
                 selectedCode={selectedEquipmentCode}
                 draftStats={draftStats[activeDataScope]}
                 onChange={updateCharacterStat}
+              />
+            ) : activeCharacterTab === "abilities" ? (
+              <AbilityEditor
+                save={save}
+                scope={activeDataScope}
+                selectedCode={selectedEquipmentCode}
+                draftAbilities={draftAbilities[activeDataScope]}
+                onChange={updateCharacterAbility}
+              />
+            ) : activeCharacterTab === "appearance" ? (
+              <EquipmentEditor
+                mode="appearance"
+                save={save}
+                scope={activeDataScope}
+                selectedCode={selectedEquipmentCode}
+                draftEquipment={draftEquipment[activeDataScope]}
+                onChange={updateCharacterEquipmentSlot}
+                onWeaponDetailChange={updateCharacterWeaponDetail}
               />
             ) : (
               <>
@@ -1684,6 +1725,356 @@ function EquipmentEditor({
   );
 }
 
+function AbilityEditor({
+  save,
+  scope,
+  selectedCode,
+  draftAbilities,
+  onChange
+}: {
+  save: SaveInfo | null;
+  scope: EquipmentScope;
+  selectedCode: number | null;
+  draftAbilities: Record<number, DraftAbilitiesEntry>;
+  onChange: (characterCode: number, abilityCode: number, value: string) => void;
+}) {
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const abilitiesByCode = useMemo(() => {
+    return new Map(save?.abilities[scope].map((abilities) => [abilities.characterCode, abilities]) ?? []);
+  }, [save, scope]);
+  const currentAbilities =
+    selectedCode === null ? null : abilitiesByCode.get(selectedCode) ?? buildUnsupportedAbilities(selectedCode, scope);
+  const selectedDraft =
+    selectedCode === null ? null : draftAbilities[selectedCode] ?? buildAbilityDraft(abilitiesByCode.get(selectedCode));
+
+  if (!currentAbilities) {
+    return <p className="empty">왼쪽 파티 목록에서 캐릭터를 선택하세요.</p>;
+  }
+
+  if (!currentAbilities.supported || !selectedDraft) {
+    return (
+      <div className="equipment-note unsupported">
+        <small>{currentAbilities.note ?? "이 캐릭터의 어빌리티 위치는 아직 확인되지 않았습니다."}</small>
+      </div>
+    );
+  }
+
+  return (
+    <div className="equipment-slots ability-editor">
+      <div className="inventory-section-heading">
+        <span>어빌리티</span>
+      </div>
+      <button type="button" className="inventory-review-button" onClick={() => setReviewOpen(true)}>
+        어빌리티 확인
+      </button>
+      <button type="button" className="inventory-add-button" onClick={() => setPickerOpen(true)}>
+        어빌리티 추가
+      </button>
+
+      <div className="inventory-section-heading">
+        <span>정보</span>
+      </div>
+      <button type="button" className="inventory-review-button" onClick={() => setInfoOpen(true)}>
+        전체 어빌리티 정보
+      </button>
+
+      {reviewOpen ? (
+        <AbilityReviewModal
+          abilities={currentAbilities}
+          draftAbilities={selectedDraft}
+          onClose={() => setReviewOpen(false)}
+          onChange={onChange}
+          onDelete={(abilityCode) => onChange(currentAbilities.characterCode, abilityCode, "255")}
+        />
+      ) : null}
+      {pickerOpen ? (
+        <AbilityPicker
+          currentAbilityCodes={Object.entries(selectedDraft)
+            .filter(([, value]) => isActiveAbilityLevel(parseAbilityDraftValue(value)))
+            .map(([code]) => Number(code))}
+          onClose={() => setPickerOpen(false)}
+          onAdd={(ability) => {
+            onChange(currentAbilities.characterCode, ability.code, "1");
+            setPickerOpen(false);
+          }}
+        />
+      ) : null}
+      {infoOpen ? <AbilityInfoModal onClose={() => setInfoOpen(false)} /> : null}
+    </div>
+  );
+}
+
+function AbilityReviewModal({
+  abilities,
+  draftAbilities,
+  onClose,
+  onChange,
+  onDelete
+}: {
+  abilities: CharacterAbilitiesInfo;
+  draftAbilities: DraftAbilitiesEntry;
+  onClose: () => void;
+  onChange: (characterCode: number, abilityCode: number, value: string) => void;
+  onDelete: (abilityCode: number) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<AbilityCategory>("all");
+  const normalizedQuery = query.trim().toLowerCase();
+  const knownAbilityCodes = new Set(abilities.abilities.map((ability) => ability.code));
+  const draftOnlyAbilities: CharacterAbilityValueInfo[] = Object.entries(draftAbilities)
+    .filter(([codeText, valueText]) => {
+      const code = Number(codeText);
+      return Number.isInteger(code) && code >= 0 && code <= 0xff && !knownAbilityCodes.has(code) && isActiveAbilityLevel(parseAbilityDraftValue(valueText));
+    })
+    .map(([codeText, valueText]) => {
+      const code = Number(codeText);
+      return {
+        code,
+        name: `알 수 없음 (${code})`,
+        offset: -1,
+        value: parseAbilityDraftValue(valueText),
+        raw: ""
+      };
+    });
+  const items = [...abilities.abilities, ...draftOnlyAbilities]
+    .filter((ability) => {
+      const value = parseAbilityDraftValue(draftAbilities[ability.code] ?? String(ability.value));
+      if (!isActiveAbilityLevel(value)) {
+        return false;
+      }
+      return matchesAbilityFilter(ability, activeCategory, normalizedQuery);
+    })
+    .sort(compareAbilityOptions);
+
+  return (
+    <AbilityModalShell
+      title="어빌리티 확인"
+      onClose={onClose}
+      activeCategory={activeCategory}
+      onCategoryChange={(category) => setActiveCategory(category as AbilityCategory)}
+    >
+      <input className="item-picker-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름 또는 코드 검색" />
+      {items.length === 0 ? (
+        <p className="empty compact">표시할 어빌리티가 없습니다.</p>
+      ) : (
+        <div className="inventory-review-list ability-review-list">
+          {items.map((ability, index) => {
+            const groupLabel = getAbilityCategoryLabel(getAbilityCategory(ability));
+            const previousGroupLabel = index > 0 ? getAbilityCategoryLabel(getAbilityCategory(items[index - 1])) : null;
+            const showGroupDivider = groupLabel !== previousGroupLabel;
+            return (
+              <React.Fragment key={ability.code}>
+                {showGroupDivider ? <div className="item-group-divider inventory-group-divider">{groupLabel}</div> : null}
+                <div className="inventory-entry">
+                  <div className="inventory-row ability-review-row">
+                    <div className="inventory-row-main">
+                      <strong>{formatAbilityName(ability.name)}</strong>
+                      <small className="item-stat-text">code {ability.code}</small>
+                    </div>
+                    <input
+                      aria-label={`${formatAbilityName(ability.name)} 값`}
+                      inputMode="numeric"
+                      min={1}
+                      max={255}
+                      value={draftAbilities[ability.code] ?? String(ability.value)}
+                      onChange={(event) => onChange(abilities.characterCode, ability.code, event.target.value)}
+                    />
+                    <button type="button" className="danger-button" onClick={() => onDelete(ability.code)}>
+                      삭제
+                    </button>
+                  </div>
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+    </AbilityModalShell>
+  );
+}
+
+function AbilityPicker({
+  currentAbilityCodes,
+  onClose,
+  onAdd
+}: {
+  currentAbilityCodes: number[];
+  onClose: () => void;
+  onAdd: (ability: AbilityOption) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<AbilityPickerCategory>("all");
+  const [manualCode, setManualCode] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
+  const listCategory = activeCategory === "manual" ? "all" : activeCategory;
+  const items = ABILITY_OPTIONS.filter((ability) => {
+    if (activeCategory === "manual") {
+      return false;
+    }
+    return matchesAbilityFilter(ability, listCategory, normalizedQuery);
+  }).sort(compareAbilityOptions);
+  const manualCodeNumber = Number(manualCode.replaceAll(",", ""));
+  const manualCodeValid = manualCode.trim() !== "" && Number.isInteger(manualCodeNumber) && manualCodeNumber >= 0 && manualCodeNumber <= 0xff;
+  const manualAlreadyAdded = manualCodeValid && currentAbilityCodes.includes(manualCodeNumber);
+
+  return (
+    <AbilityModalShell
+      title="어빌리티 추가"
+      onClose={onClose}
+      activeCategory={activeCategory}
+      onCategoryChange={setActiveCategory}
+      includeManual
+    >
+      {activeCategory === "manual" ? (
+        <div className="manual-code-panel">
+          <div className="manual-code-editor ability-manual-code-editor">
+            <span>코드</span>
+            <input inputMode="numeric" value={manualCode} onChange={(event) => setManualCode(event.target.value)} />
+          </div>
+          <button
+            type="button"
+            className="inventory-add-button"
+            disabled={!manualCodeValid || manualAlreadyAdded}
+            onClick={() => onAdd(ABILITY_OPTIONS.find((ability) => ability.code === manualCodeNumber) ?? { code: manualCodeNumber, name: `알 수 없음 (${manualCodeNumber})` })}
+          >
+            수동 코드 추가
+          </button>
+          <small className="manual-code-help">
+            {manualAlreadyAdded ? "이미 추가된 어빌리티 코드입니다." : "코드표에 없는 어빌리티도 직접 추가할 수 있습니다."}
+          </small>
+        </div>
+      ) : (
+        <>
+          <input className="item-picker-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름 또는 코드 검색" />
+          <div className="item-picker-list inventory-picker-list ability-picker-list">
+            {items.map((ability, index) => {
+              const alreadyAdded = currentAbilityCodes.includes(ability.code);
+              const groupLabel = getAbilityCategoryLabel(getAbilityCategory(ability));
+              const previousGroupLabel = index > 0 ? getAbilityCategoryLabel(getAbilityCategory(items[index - 1])) : null;
+              const showGroupDivider = groupLabel !== previousGroupLabel;
+              return (
+                <React.Fragment key={ability.code}>
+                  {showGroupDivider ? <div className="item-group-divider picker-group-divider">{groupLabel}</div> : null}
+                  <button
+                    type="button"
+                    className={alreadyAdded ? "item-picker-row ability-picker-row disabled" : "item-picker-row ability-picker-row"}
+                    onClick={() => {
+                      if (!alreadyAdded) {
+                        onAdd(ability);
+                      }
+                    }}
+                  >
+                    <span className="item-picker-main">
+                      <span className="item-picker-name">{formatAbilityName(ability.name)}</span>
+                    </span>
+                    <small className="item-picker-code">{ability.code}</small>
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </AbilityModalShell>
+  );
+}
+
+function AbilityInfoModal({ onClose }: { onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<AbilityCategory>("all");
+  const normalizedQuery = query.trim().toLowerCase();
+  const items = ABILITY_OPTIONS.filter((ability) => matchesAbilityFilter(ability, activeCategory, normalizedQuery)).sort(compareAbilityOptions);
+
+  return (
+    <AbilityModalShell
+      title="전체 어빌리티 정보"
+      onClose={onClose}
+      activeCategory={activeCategory}
+      onCategoryChange={(category) => setActiveCategory(category as AbilityCategory)}
+    >
+      <input className="item-picker-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름 또는 코드 검색" />
+      <div className="item-picker-list inventory-picker-list ability-picker-list">
+        {items.map((ability, index) => {
+          const groupLabel = getAbilityCategoryLabel(getAbilityCategory(ability));
+          const previousGroupLabel = index > 0 ? getAbilityCategoryLabel(getAbilityCategory(items[index - 1])) : null;
+          const showGroupDivider = groupLabel !== previousGroupLabel;
+          return (
+            <React.Fragment key={ability.code}>
+              {showGroupDivider ? <div className="item-group-divider picker-group-divider">{groupLabel}</div> : null}
+              <div className="item-picker-row ability-picker-row">
+                <span className="item-picker-main">
+                  <span className="item-picker-name">{formatAbilityName(ability.name)}</span>
+                </span>
+                <small className="item-picker-code">{ability.code}</small>
+              </div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </AbilityModalShell>
+  );
+}
+
+function AbilityModalShell({
+  title,
+  activeCategory,
+  onCategoryChange,
+  onClose,
+  includeManual = false,
+  children
+}: {
+  title: string;
+  activeCategory: AbilityPickerCategory;
+  onCategoryChange: (category: AbilityPickerCategory) => void;
+  onClose: () => void;
+  includeManual?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section className="item-picker ability-picker-modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
+        <header className="item-picker-header">
+          <div>
+            <h2>{title}</h2>
+          </div>
+          <button type="button" className="secondary-button" onClick={onClose}>
+            닫기
+          </button>
+        </header>
+        <div className="item-picker-body">
+          <aside className="item-picker-sidebar">
+            {(["all", "normal", "equipped", "special"] as AbilityCategory[]).map((category) => (
+              <button
+                key={category}
+                type="button"
+                className={activeCategory === category ? "picker-tab active" : "picker-tab"}
+                onClick={() => onCategoryChange(category)}
+              >
+                {getAbilityCategoryLabel(category)}
+              </button>
+            ))}
+            {includeManual ? (
+              <>
+                <div className="picker-sidebar-divider" />
+                <button
+                  type="button"
+                  className={activeCategory === "manual" ? "picker-tab active" : "picker-tab"}
+                  onClick={() => onCategoryChange("manual")}
+                >
+                  수동 코드
+                </button>
+              </>
+            ) : null}
+          </aside>
+          <section className="item-picker-results">{children}</section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function StatsEditor({
   save,
   scope,
@@ -2097,6 +2488,8 @@ type EquipmentPickerItem = {
 
 type PickerCategory = InventoryItemCategory | "all";
 type EquipmentPickerCategory = PickerCategory | "manual";
+type AbilityCategory = "all" | "normal" | "equipped" | "special";
+type AbilityPickerCategory = AbilityCategory | "manual";
 
 function EquipmentPicker({
   slotKey,
@@ -2580,6 +2973,58 @@ function getEquipmentSelectOptions(slot: EquipmentSlotKey, currentValue: number)
   return [{ code: currentValue, name: "현재 저장값" }, ...options];
 }
 
+function formatAbilityName(name: string): string {
+  return name.replace(/\s*\(/g, " (");
+}
+
+function getAbilityCategory(ability: AbilityOption): AbilityCategory {
+  if (/증가$/.test(ability.name)) {
+    return "equipped";
+  }
+  if (/\([^)]*\)$/.test(ability.name)) {
+    return "special";
+  }
+  return "normal";
+}
+
+function getAbilityCategoryLabel(category: AbilityCategory): string {
+  if (category === "normal") {
+    return "일반 어빌리티";
+  }
+  if (category === "equipped") {
+    return "장착 어빌리티";
+  }
+  if (category === "special") {
+    return "필살기";
+  }
+  return "전체";
+}
+
+function getAbilityCategoryRank(ability: AbilityOption): number {
+  const category = getAbilityCategory(ability);
+  if (category === "normal") {
+    return 0;
+  }
+  if (category === "equipped") {
+    return 1;
+  }
+  return 2;
+}
+
+function compareAbilityOptions(a: AbilityOption, b: AbilityOption): number {
+  return getAbilityCategoryRank(a) - getAbilityCategoryRank(b) || a.code - b.code;
+}
+
+function matchesAbilityFilter(ability: AbilityOption, category: AbilityCategory, normalizedQuery: string): boolean {
+  if (category !== "all" && getAbilityCategory(ability) !== category) {
+    return false;
+  }
+  if (!normalizedQuery) {
+    return true;
+  }
+  return formatAbilityName(ability.name).toLowerCase().includes(normalizedQuery) || String(ability.code).includes(normalizedQuery);
+}
+
 function getEquipmentPickerItems(slot: EquipmentSlotKey, currentValue: number): EquipmentPickerItem[] {
   const items = new Map<string, EquipmentPickerItem>();
   const addItem = (item: EquipmentPickerItem) => {
@@ -2672,6 +3117,21 @@ function buildUnsupportedStats(characterCode: number, scope: EquipmentScope): Ch
   };
 }
 
+function buildUnsupportedAbilities(characterCode: number, scope: EquipmentScope): CharacterAbilitiesInfo {
+  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  return {
+    characterCode,
+    characterName,
+    scope,
+    supported: false,
+    note:
+      getCharacterGroup(characterName) === "arena"
+        ? "아레나 캐릭터의 정보는 세이브 파일에 기록되지 않습니다."
+        : "어빌리티 오프셋이 확인되지 않았습니다.",
+    abilities: []
+  };
+}
+
 function buildEquipmentDraft(equipment?: CharacterEquipmentInfo): DraftEquipmentEntry | null {
   if (!equipment?.supported) {
     return null;
@@ -2745,6 +3205,24 @@ function buildStatsDrafts(statsList: CharacterStatsInfo[]): Record<number, Draft
   ) as Record<number, DraftStatsEntry>;
 }
 
+function buildAbilityDraft(abilities?: CharacterAbilitiesInfo): DraftAbilitiesEntry | null {
+  if (!abilities?.supported) {
+    return null;
+  }
+  return Object.fromEntries(abilities.abilities.map((ability) => [ability.code, String(ability.value)])) as DraftAbilitiesEntry;
+}
+
+function buildAbilityDrafts(abilitiesList: CharacterAbilitiesInfo[]): Record<number, DraftAbilitiesEntry> {
+  return Object.fromEntries(
+    abilitiesList
+      .filter((abilities) => abilities.supported)
+      .map((abilities) => [
+        abilities.characterCode,
+        Object.fromEntries(abilities.abilities.map((ability) => [ability.code, String(ability.value)]))
+      ])
+  ) as Record<number, DraftAbilitiesEntry>;
+}
+
 function buildEquipmentEdits(
   equipment: SaveInfo["equipment"],
   draftEquipment: DraftEquipment
@@ -2793,6 +3271,32 @@ function buildStatsEdits(stats: SaveInfo["stats"], draftStats: DraftStats): Char
         ) as Partial<Record<CharacterStatKey, number>>
       }))
   );
+}
+
+function buildAbilityEdits(abilities: SaveInfo["abilities"], draftAbilities: DraftAbilities): CharacterAbilitiesEdit[] {
+  return (["field", "battle"] as EquipmentScope[]).flatMap((scope) =>
+    abilities[scope]
+      .filter((item) => item.supported && draftAbilities[scope][item.characterCode])
+      .map((item) => ({
+        characterCode: item.characterCode,
+        scope,
+        values: buildAbilityEditValues(item, draftAbilities[scope][item.characterCode])
+      }))
+  );
+}
+
+function buildAbilityEditValues(item: CharacterAbilitiesInfo, draft: DraftAbilitiesEntry): Record<number, number> {
+  const values = new Map<number, number>();
+  for (const ability of item.abilities) {
+    values.set(ability.code, parseAbilityDraftValue(draft[ability.code] ?? String(ability.value)));
+  }
+  for (const [codeText, valueText] of Object.entries(draft)) {
+    const code = Number(codeText);
+    if (Number.isInteger(code) && code >= 0 && code <= 0xff) {
+      values.set(code, parseAbilityDraftValue(valueText));
+    }
+  }
+  return Object.fromEntries(values) as Record<number, number>;
 }
 
 function getWeaponDetailOptions(
@@ -2949,6 +3453,38 @@ function areStatDraftsValid(stats: SaveInfo["stats"], draftStats: DraftStats): b
         });
     })
   );
+}
+
+function areAbilityDraftsValid(abilities: SaveInfo["abilities"], draftAbilities: DraftAbilities): boolean {
+  return (["field", "battle"] as EquipmentScope[]).every((scope) =>
+    abilities[scope].every((item) => {
+      const draft = draftAbilities[scope][item.characterCode];
+      if (!draft) {
+        return true;
+      }
+      return Object.entries(draft).every(([codeText, valueText]) => {
+        const code = Number(codeText);
+        const value = parseAbilityDraftValue(valueText);
+        return Number.isInteger(code) && code >= 0 && code <= 0xff && isValidAbilityLevel(value);
+      });
+    })
+  );
+}
+
+function parseAbilityDraftValue(value: string): number {
+  const normalizedValue = value.trim().replaceAll(",", "");
+  if (normalizedValue === "") {
+    return 0xff;
+  }
+  return Number(normalizedValue);
+}
+
+function isValidAbilityLevel(value: number): boolean {
+  return Number.isInteger(value) && ((value >= 1 && value <= 20) || value === 0xff);
+}
+
+function isActiveAbilityLevel(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= 20;
 }
 
 type CharacterGroup = "normal" | "episode" | "arena";

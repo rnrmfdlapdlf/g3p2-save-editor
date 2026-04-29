@@ -197,6 +197,26 @@ export type CharacterStatsInfo = {
   fields: CharacterStatFieldInfo[];
 };
 
+export type AbilityOption = {
+  code: number;
+  name: string;
+};
+
+export type CharacterAbilityValueInfo = AbilityOption & {
+  offset: number;
+  value: number;
+  raw: string;
+};
+
+export type CharacterAbilitiesInfo = {
+  characterCode: number;
+  characterName: string;
+  scope: EquipmentScope;
+  supported: boolean;
+  note?: string;
+  abilities: CharacterAbilityValueInfo[];
+};
+
 export type SaveTypeLabel = "연대표" | "챕터" | "전투" | "알 수 없음";
 export type SaveEpisodeLabel = "미선택" | "에피소드4" | "에피소드5";
 
@@ -228,6 +248,7 @@ export type SaveInfo = {
   equipment: Record<EquipmentScope, CharacterEquipmentInfo[]>;
   mercenaries: Record<EquipmentScope, CharacterMercenaryInfo[]>;
   stats: Record<EquipmentScope, CharacterStatsInfo[]>;
+  abilities: Record<EquipmentScope, CharacterAbilitiesInfo[]>;
 };
 
 export type CharacterEquipmentEdit = {
@@ -256,6 +277,12 @@ export type CharacterStatsEdit = {
   values: Partial<Record<CharacterStatKey, number>>;
 };
 
+export type CharacterAbilitiesEdit = {
+  characterCode: number;
+  scope: EquipmentScope;
+  values: Record<number, number>;
+};
+
 export type SaveEditRequest = {
   money: Record<SaveDataScope, Record<EpisodeKey, number>>;
   inventory?: Partial<Record<SaveDataScope, Partial<Record<EpisodeKey, Partial<Record<InventoryItemKey, number>>>>>>;
@@ -264,6 +291,7 @@ export type SaveEditRequest = {
   equipment?: CharacterEquipmentEdit[];
   mercenaries?: CharacterMercenaryEdit[];
   stats?: CharacterStatsEdit[];
+  abilities?: CharacterAbilitiesEdit[];
 };
 
 type InventoryTable = { startOffset: number; countOffset: number };
@@ -979,6 +1007,7 @@ const WEAPON_PIC_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x04;
 const WEAPON_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x02;
 const BATTLE_MERCENARY_RELATIVE_OFFSET_FROM_CHARACTER = 0x18;
 const BATTLE_UNIT_SCAN_START_OFFSET = 0xe000;
+const CHARACTER_ABILITY_RELATIVE_OFFSET = 0x77;
 const CHARACTER_STAT_DEFINITIONS: Array<{
   key: CharacterStatKey;
   label: string;
@@ -999,6 +1028,182 @@ const CHARACTER_STAT_DEFINITIONS: Array<{
   { key: "dex", label: "DEX", relativeOffset: 0x42 },
   { key: "soulCurrent", label: "현재 SOUL", relativeOffset: 0x3cb, battleOnly: true },
   { key: "tpCurrent", label: "현재 TP", relativeOffset: 0x3cd, battleOnly: true, signed: true }
+];
+export const ABILITY_OPTIONS: AbilityOption[] = [
+  { code: 0, name: "연" },
+  { code: 1, name: "파" },
+  { code: 2, name: "비" },
+  { code: 3, name: "살" },
+  { code: 4, name: "혼" },
+  { code: 5, name: "폭" },
+  { code: 6, name: "광 (사용못함)" },
+  { code: 7, name: "오버드라이브" },
+  { code: 8, name: "힐" },
+  { code: 9, name: "격려" },
+  { code: 10, name: "큐어" },
+  { code: 11, name: "포스필드" },
+  { code: 12, name: "희생" },
+  { code: 13, name: "오버플로우" },
+  { code: 14, name: "리미트플로우" },
+  { code: 15, name: "프레셔" },
+  { code: 16, name: "메테오스트라이크" },
+  { code: 17, name: "포스리젼" },
+  { code: 18, name: "비연참" },
+  { code: 19, name: "소닉블레이드" },
+  { code: 20, name: "풍아열공참" },
+  { code: 21, name: "익스플로젼" },
+  { code: 22, name: "헤비프레셔" },
+  { code: 26, name: "더블브레이크 (아셀라스)" },
+  { code: 27, name: "소울블레스트" },
+  { code: 28, name: "엘레멘탈파이어" },
+  { code: 29, name: "카운터블레이드" },
+  { code: 30, name: "블레이드미사일" },
+  { code: 31, name: "사신의 분노" },
+  { code: 33, name: "일루션히트" },
+  { code: 34, name: "소울스트라이크" },
+  { code: 35, name: "마인드어택" },
+  { code: 36, name: "하이텔레포트" },
+  { code: 37, name: "텔레파시 (사용못함)" },
+  { code: 38, name: "쇼크" },
+  { code: 39, name: "브레인스톰" },
+  { code: 40, name: "배리어" },
+  { code: 41, name: "아디지오" },
+  { code: 42, name: "프레스토" },
+  { code: 43, name: "퍼니피 (사용못함)" },
+  { code: 44, name: "리미트크래쉬" },
+  { code: 45, name: "리미트캐스트" },
+  { code: 46, name: "마인드컨트롤" },
+  { code: 47, name: "마인드체인지" },
+  { code: 48, name: "파워드배리어" },
+  { code: 49, name: "브레인브레이크" },
+  { code: 50, name: "일루션컨트럴 (사용못함)" },
+  { code: 51, name: "오버테이크" },
+  { code: 52, name: "올퍼니피 (사용못함)" },
+  { code: 53, name: "익스퍼트웨이브" },
+  { code: 54, name: "익스퍼트블레스트" },
+  { code: 55, name: "엘레멘탈아이스" },
+  { code: 56, name: "엘레멘탈썬더" },
+  { code: 57, name: "엘레멘탈라이트" },
+  { code: 58, name: "리인카네이션" },
+  { code: 59, name: "서몬몬스터" },
+  { code: 60, name: "리콜" },
+  { code: 61, name: "엘레멘탈실드" },
+  { code: 62, name: "엘레멘탈라이트닝 (사용못함)" },
+  { code: 63, name: "엘레멘탈다크" },
+  { code: 64, name: "하드밸런싱" },
+  { code: 65, name: "소프트밸런싱" },
+  { code: 66, name: "엘레멘탈베이스" },
+  { code: 68, name: "락킹필드" },
+  { code: 69, name: "포이즌" },
+  { code: 70, name: "기가실드" },
+  { code: 71, name: "파이어웨이브" },
+  { code: 72, name: "라이트닝샤벨" },
+  { code: 73, name: "어스퀘이크" },
+  { code: 74, name: "썬더스톰" },
+  { code: 75, name: "블리자드" },
+  { code: 76, name: "카운터스피어" },
+  { code: 77, name: "카운터미사일" },
+  { code: 78, name: "아스트럴파이어" },
+  { code: 79, name: "엘레멘탈버스터" },
+  { code: 80, name: "웨폰크래쉬" },
+  { code: 81, name: "에네르기힐 (사용못함)" },
+  { code: 82, name: "아스트럴실드" },
+  { code: 83, name: "사이킥크로스" },
+  { code: 84, name: "캐노피" },
+  { code: 85, name: "피드백" },
+  { code: 86, name: "아스트럴애로우" },
+  { code: 87, name: "아스트럴블레이드" },
+  { code: 88, name: "카운터붐" },
+  { code: 89, name: "파이널버스터" },
+  { code: 90, name: "아스트럴필드" },
+  { code: 91, name: "리바이블" },
+  { code: 92, name: "와이드힐" },
+  { code: 93, name: "크래쉬붐" },
+  { code: 94, name: "메테오" },
+  { code: 95, name: "다이나믹크래쉬" },
+  { code: 96, name: "커스" },
+  { code: 97, name: "카운터실드" },
+  { code: 98, name: "워큰드아머" },
+  { code: 99, name: "파워드아머" },
+  { code: 100, name: "파워다운" },
+  { code: 101, name: "파워업" },
+  { code: 102, name: "스피드업" },
+  { code: 103, name: "스피드다운" },
+  { code: 104, name: "페스트렉" },
+  { code: 105, name: "카피렉" },
+  { code: 106, name: "블라인드" },
+  { code: 107, name: "안티벨런싱" },
+  { code: 108, name: "코메트 (사용못함)" },
+  { code: 109, name: "그라비티필드" },
+  { code: 110, name: "그라비티벨런스" },
+  { code: 111, name: "블레이드샤워" },
+  { code: 112, name: "카운터필드" },
+  { code: 113, name: "언벨런싱 (사용못함)" },
+  { code: 114, name: "블랙홀" },
+  { code: 115, name: "미라클" },
+  { code: 116, name: "워핑" },
+  { code: 117, name: "방어" },
+  { code: 118, name: "회피" },
+  { code: 121, name: "오메가스윙" },
+  { code: 122, name: "공폭탄" },
+  { code: 123, name: "헬카이트" },
+  { code: 124, name: "Hunter (사용못함)" },
+  { code: 125, name: "크레이지 샷 (크리스티앙)" },
+  { code: 126, name: "진 풍아열공참 (죠안)" },
+  { code: 127, name: "초능력공격" },
+  { code: 138, name: "나인크루세이더 (디에네)" },
+  { code: 139, name: "다크스크림 (마리아)" },
+  { code: 140, name: "리커버리" },
+  { code: 141, name: "리제너레이션" },
+  { code: 142, name: "엘레멘탈힐" },
+  { code: 143, name: "힐윈드" },
+  { code: 144, name: "사이킥 드라이브" },
+  { code: 145, name: "셰틀라이트 어택" },
+  { code: 146, name: "버닝웜" },
+  { code: 147, name: "타이타니아 슈발츠" },
+  { code: 148, name: "코메트" },
+  { code: 149, name: "페이온 스피리츠 (리엔)" },
+  { code: 150, name: "무신멸뢰옥 (유진)" },
+  { code: 151, name: "LP 증가" },
+  { code: 154, name: "SOUL 증가" },
+  { code: 155, name: "DEP 증가" },
+  { code: 156, name: "TP 증가" },
+  { code: 157, name: "PSY 증가" },
+  { code: 158, name: "인페르노" },
+  { code: 159, name: "폭주 (베라모드)" },
+  { code: 160, name: "이스케이프" },
+  { code: 161, name: "레이져공격 (사용못함)" },
+  { code: 162, name: "천지파열무 (살라딘)" },
+  { code: 163, name: "진무 천지파열 (살라딘)" },
+  { code: 164, name: "아수라파천무 (베라모드, 살라딘)" },
+  { code: 165, name: "빅뱅 (리챠드)" },
+  { code: 166, name: "밍밍 스페셜 (네리사)" },
+  { code: 167, name: "선 블래스트 (란)" },
+  { code: 168, name: "데스포토그래프 (루시엔)" },
+  { code: 169, name: "폭풍검 (샤크바리)" },
+  { code: 170, name: "이데아캐논 (살라딘)" },
+  { code: 171, name: "헬레이져" },
+  { code: 172, name: "아이템_테스트 (사용못함)" },
+  { code: 173, name: "영혼의집중" },
+  { code: 174, name: "소울스트림" },
+  { code: 175, name: "대검연마법" },
+  { code: 176, name: "광마육혈포" },
+  { code: 177, name: "반사광증폭" },
+  { code: 178, name: "구룡금나수" },
+  { code: 179, name: "발키리의혼" },
+  { code: 180, name: "루나무음보법" },
+  { code: 181, name: "기자근성" },
+  { code: 182, name: "밍밍조련술" },
+  { code: 183, name: "머독폭파술" },
+  { code: 184, name: "화령제렴술" },
+  { code: 185, name: "템페스트" },
+  { code: 186, name: "회색의 잔영" },
+  { code: 187, name: "강림의 밤" },
+  { code: 188, name: "서풍의 광시곡" },
+  { code: 189, name: "레드 크로스" },
+  { code: 190, name: "아지다하카 전술 Mk-II" },
+  { code: 191, name: "월광의 살육" },
+  { code: 192, name: "블랙 이클립스" }
 ];
 const FIELD_CHARACTER_RECORD_INDICES: Record<number, number> = {
   236: 0,
@@ -1086,6 +1291,10 @@ export function parseSave(data: Uint8Array, filePath: string): SaveInfo {
     stats: {
       field: readCharacterStatsList(data, "field"),
       battle: readCharacterStatsList(data, "battle")
+    },
+    abilities: {
+      field: readCharacterAbilitiesList(data, "field"),
+      battle: readCharacterAbilitiesList(data, "battle")
     }
   };
 }
@@ -1127,6 +1336,7 @@ export function applySaveEdits(data: Uint8Array, edits: SaveEditRequest): void {
   applyEquipmentEdits(data, edits.equipment ?? []);
   applyMercenaryEdits(data, edits.mercenaries ?? []);
   applyCharacterStatsEdits(data, edits.stats ?? []);
+  applyCharacterAbilitiesEdits(data, edits.abilities ?? []);
   writeUint16(data, data.length - 2, calculateChecksum(data));
 }
 
@@ -1924,6 +2134,102 @@ function getMercenaryOffset(data: Uint8Array, characterCode: number, scope: Equi
   return mercenaryOffset + 4 <= data.length ? mercenaryOffset : null;
 }
 
+function readCharacterAbilitiesList(data: Uint8Array, scope: EquipmentScope): CharacterAbilitiesInfo[] {
+  if (scope === "field") {
+    return readFieldCharacterCodes(data).map((characterCode) => readCharacterAbilities(data, characterCode, scope));
+  }
+
+  const locationCode = readInverseUint32(data, 0x0c);
+  if (locationCode !== 1) {
+    return [];
+  }
+
+  const battleCharacterCodes = readBattleCharacterCodes(data);
+  if (battleCharacterCodes.length > 0) {
+    return battleCharacterCodes.map((characterCode) => readCharacterAbilities(data, characterCode, scope));
+  }
+
+  const activeParty = readParty(data, getActiveEpisodeKey(data));
+  return activeParty.members.map((member) => readCharacterAbilities(data, member.code, scope));
+}
+
+function readCharacterAbilities(data: Uint8Array, characterCode: number, scope: EquipmentScope): CharacterAbilitiesInfo {
+  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const baseOffset = getCharacterDataBaseOffset(data, characterCode, scope);
+
+  if (baseOffset === null) {
+    return {
+      characterCode,
+      characterName,
+      scope,
+      supported: false,
+      note:
+        scope === "battle"
+          ? "전투 어빌리티 위치가 확인되지 않았거나 전투 세이브가 아닙니다."
+          : "아직 어빌리티 위치가 확인되지 않은 캐릭터입니다.",
+      abilities: []
+    };
+  }
+
+  const abilityBaseOffset = baseOffset + CHARACTER_ABILITY_RELATIVE_OFFSET;
+  const knownAbilityCodes = new Set(ABILITY_OPTIONS.map((ability) => ability.code));
+  const unknownStoredAbilities: AbilityOption[] = [];
+
+  for (let code = 0; code <= 0xff; code += 1) {
+    const offset = abilityBaseOffset + code;
+    if (offset >= data.length) {
+      break;
+    }
+    if (!knownAbilityCodes.has(code) && data[offset] !== 0xff) {
+      unknownStoredAbilities.push({ code, name: `알 수 없음 (${code})` });
+    }
+  }
+
+  const abilityOptions = [...ABILITY_OPTIONS, ...unknownStoredAbilities].sort((a, b) => a.code - b.code);
+  return {
+    characterCode,
+    characterName,
+    scope,
+    supported: true,
+    abilities: abilityOptions.filter((ability) => abilityBaseOffset + ability.code < data.length).map((ability) => {
+      const offset = abilityBaseOffset + ability.code;
+      const raw = data[offset];
+      return {
+        ...ability,
+        offset,
+        value: raw === 0xff ? 0xff : 0xff - raw,
+        raw: raw.toString(16).padStart(2, "0").toUpperCase()
+      };
+    })
+  };
+}
+
+function applyCharacterAbilitiesEdits(data: Uint8Array, edits: CharacterAbilitiesEdit[]): void {
+  for (const edit of edits) {
+    const baseOffset = getCharacterDataBaseOffset(data, edit.characterCode, edit.scope);
+    if (baseOffset === null) {
+      continue;
+    }
+
+    const abilityBaseOffset = baseOffset + CHARACTER_ABILITY_RELATIVE_OFFSET;
+    for (const [codeText, value] of Object.entries(edit.values)) {
+      const code = Number(codeText);
+      const offset = abilityBaseOffset + code;
+      if (!Number.isInteger(code) || offset < 0 || offset >= data.length) {
+        continue;
+      }
+      writeAbilityValue(data, offset, value);
+    }
+  }
+}
+
+function writeAbilityValue(data: Uint8Array, offset: number, value: number): void {
+  if (!Number.isInteger(value) || !((value >= 1 && value <= 20) || value === 0xff)) {
+    throw new Error("어빌리티 값은 1~20 또는 255여야 합니다.");
+  }
+  data[offset] = value === 0xff ? 0xff : 0xff - value;
+}
+
 function readCharacterStatsList(data: Uint8Array, scope: EquipmentScope): CharacterStatsInfo[] {
   if (scope === "field") {
     return readFieldCharacterCodes(data).map((characterCode) => readCharacterStats(data, characterCode, scope));
@@ -2022,6 +2328,10 @@ function applyCharacterStatsEdits(data: Uint8Array, edits: CharacterStatsEdit[])
 }
 
 function getCharacterStatsBaseOffset(data: Uint8Array, characterCode: number, scope: EquipmentScope): number | null {
+  return getCharacterDataBaseOffset(data, characterCode, scope);
+}
+
+function getCharacterDataBaseOffset(data: Uint8Array, characterCode: number, scope: EquipmentScope): number | null {
   if (scope === "field") {
     const recordBaseOffset = findFieldCharacterRecordBaseOffset(data, characterCode);
     return recordBaseOffset === null ? null : recordBaseOffset + FIELD_CHARACTER_CODE_RELATIVE_OFFSET;
