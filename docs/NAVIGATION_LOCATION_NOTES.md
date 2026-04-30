@@ -2,8 +2,6 @@
 
 This document records in-progress research about navigation, star system, and planet location fields.
 
-These findings are not yet confirmed enough for `AGENTS.md`. Move only stable, verified facts into `AGENTS.md` after additional validation.
-
 ## Scope and Caution
 
 - All observations in this note are currently from **Episode 4** save data.

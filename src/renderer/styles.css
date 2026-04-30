@@ -1108,13 +1108,17 @@ h1 {
 }
 
 .ability-review-row {
-  grid-template-columns: minmax(0, 1fr) 58px auto;
+  grid-template-columns: minmax(0, 1fr) 132px auto;
 }
 
 .ability-review-row input {
   height: 36px;
   padding: 0 8px;
   text-align: right;
+}
+
+.ability-level-inputs {
+  gap: 6px;
 }
 
 .mercenary-option-list {
@@ -1459,6 +1463,7 @@ h1 {
 
 .ability-picker-row .item-picker-main {
   display: grid;
+  gap: 3px;
   min-width: 0;
 }
 

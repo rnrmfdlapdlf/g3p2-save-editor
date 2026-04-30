@@ -1,6 +1,7 @@
 import React, { DragEvent, useEffect, useMemo, useState } from "react";
 import {
   ABILITY_OPTIONS,
+  AbilityCategory,
   AbilityOption,
   applySaveEdits,
   CharacterAbilitiesEdit,
@@ -962,16 +963,12 @@ function InventoryReviewModal({
   onInventoryAdd: (item: InventoryCatalogItem) => boolean;
 }) {
   const [query, setQuery] = useState("");
-  const [manualCode, setManualCode] = useState("");
-  const [activeCategory, setActiveCategory] = useState<EquipmentPickerCategory>("all");
+  const [activeCategory, setActiveCategory] = useState<PickerCategory>("all");
   const normalizedQuery = query.trim().toLowerCase();
-  const listCategory: PickerCategory = activeCategory === "manual" ? "all" : activeCategory;
+  const listCategory: PickerCategory = activeCategory;
   const filteredInventory = draftInventory
     .map((item, index) => ({ item, index, catalogItem: getCatalogItem(item.itemCode) }))
     .filter(({ item, catalogItem }) => {
-      if (activeCategory === "manual") {
-        return false;
-      }
       const name = catalogItem?.name ?? originalByCode.get(item.itemCode)?.name ?? "알 수 없음";
       if (activeCategory !== "all" && catalogItem?.category !== activeCategory) {
         return false;
@@ -1014,51 +1011,31 @@ function InventoryReviewModal({
               activeCategory={activeCategory}
               onCategoryChange={(category) => setActiveCategory(category)}
             />
-            <div className="picker-sidebar-divider" />
-            <button
-              type="button"
-              className={activeCategory === "manual" ? "picker-tab active" : "picker-tab"}
-              onClick={() => setActiveCategory("manual")}
-            >
-              수동 코드 입력
-            </button>
           </aside>
 
           <section className="item-picker-results">
-            {activeCategory === "manual" ? (
-              <ManualCodeInput
-                value={manualCode}
-                ariaLabel="수동 아이템 코드"
-                helpText="목록에 없는 아이템 코드를 직접 입력합니다."
-                confirmMessage="255를 넘는 아이템 코드입니다. 그래도 추가할까요?"
-                onChange={setManualCode}
-                onAdd={(code) => {
-                  onInventoryAdd({ code, name: "알 수 없음", category: "item" });
-                }}
+            <>
+              <input
+                className="item-picker-search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="이름 또는 코드 검색"
               />
-            ) : (
-              <>
-                <input
-                  className="item-picker-search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="이름 또는 코드 검색"
-                />
-                {draftInventory.length === 0 ? (
-                  <p className="empty compact">인벤토리가 비어있습니다.</p>
-                ) : filteredInventory.length === 0 ? (
-                  <p className="empty compact">필터에 맞는 항목이 없습니다.</p>
-                ) : (
-                  <div className="inventory-review-list">
-                    {filteredInventory.map(({ item, index, catalogItem }, itemIndex) => {
-                      const original = originalByCode.get(item.itemCode);
-                      const name = catalogItem?.name ?? original?.name ?? "알 수 없음";
-                      const stats = catalogItem ? getItemStatText(name) : `code ${item.itemCode}`;
-                      const groupLabel = getInventoryResultGroupLabel(catalogItem, listCategory);
-                      const previousGroupLabel =
-                        itemIndex > 0 ? getInventoryResultGroupLabel(filteredInventory[itemIndex - 1].catalogItem, listCategory) : null;
-                      const showGroupDivider = groupLabel !== null && groupLabel !== previousGroupLabel;
-                      return (
+              {draftInventory.length === 0 ? (
+                <p className="empty compact">인벤토리가 비어있습니다.</p>
+              ) : filteredInventory.length === 0 ? (
+                <p className="empty compact">필터에 맞는 항목이 없습니다.</p>
+              ) : (
+                <div className="inventory-review-list">
+                  {filteredInventory.map(({ item, index, catalogItem }, itemIndex) => {
+                    const original = originalByCode.get(item.itemCode);
+                    const name = catalogItem?.name ?? original?.name ?? "알 수 없음";
+                    const stats = catalogItem ? getItemStatText(name) : `code ${item.itemCode}`;
+                    const groupLabel = getInventoryResultGroupLabel(catalogItem, listCategory);
+                    const previousGroupLabel =
+                      itemIndex > 0 ? getInventoryResultGroupLabel(filteredInventory[itemIndex - 1].catalogItem, listCategory) : null;
+                    const showGroupDivider = groupLabel !== null && groupLabel !== previousGroupLabel;
+                    return (
                   <React.Fragment key={`${item.itemCode}-${index}`}>
                     {showGroupDivider ? <div className="item-group-divider inventory-group-divider">{groupLabel}</div> : null}
                           <div className="inventory-entry">
@@ -1089,12 +1066,11 @@ function InventoryReviewModal({
                             </div>
                           </div>
                         </React.Fragment>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </>
           </section>
         </div>
       </section>
@@ -1749,29 +1725,27 @@ function AbilityEditor({
   const selectedDraft =
     selectedCode === null ? null : draftAbilities[selectedCode] ?? buildAbilityDraft(abilitiesByCode.get(selectedCode));
 
-  if (!currentAbilities) {
-    return <p className="empty">왼쪽 파티 목록에서 캐릭터를 선택하세요.</p>;
-  }
-
-  if (!currentAbilities.supported || !selectedDraft) {
-    return (
-      <div className="equipment-note unsupported">
-        <small>{currentAbilities.note ?? "이 캐릭터의 어빌리티 위치는 아직 확인되지 않았습니다."}</small>
-      </div>
-    );
-  }
-
   return (
     <div className="equipment-slots ability-editor">
       <div className="inventory-section-heading">
         <span>어빌리티</span>
       </div>
-      <button type="button" className="inventory-review-button" onClick={() => setReviewOpen(true)}>
-        어빌리티 확인
-      </button>
-      <button type="button" className="inventory-add-button" onClick={() => setPickerOpen(true)}>
-        어빌리티 추가
-      </button>
+      {!currentAbilities ? (
+        <p className="empty compact">왼쪽 파티 목록에서 캐릭터를 선택하세요.</p>
+      ) : !currentAbilities.supported || !selectedDraft ? (
+        <div className="equipment-note unsupported">
+          <small>{currentAbilities.note ?? "이 캐릭터의 어빌리티 위치는 아직 확인되지 않았습니다."}</small>
+        </div>
+      ) : (
+        <>
+          <button type="button" className="inventory-review-button" onClick={() => setReviewOpen(true)}>
+            어빌리티 확인
+          </button>
+          <button type="button" className="inventory-add-button" onClick={() => setPickerOpen(true)}>
+            어빌리티 추가
+          </button>
+        </>
+      )}
 
       <div className="inventory-section-heading">
         <span>정보</span>
@@ -1780,7 +1754,7 @@ function AbilityEditor({
         전체 어빌리티 정보
       </button>
 
-      {reviewOpen ? (
+      {reviewOpen && currentAbilities?.supported && selectedDraft ? (
         <AbilityReviewModal
           abilities={currentAbilities}
           draftAbilities={selectedDraft}
@@ -1789,7 +1763,7 @@ function AbilityEditor({
           onDelete={(abilityCode) => onChange(currentAbilities.characterCode, abilityCode, "255")}
         />
       ) : null}
-      {pickerOpen ? (
+      {pickerOpen && currentAbilities?.supported && selectedDraft ? (
         <AbilityPicker
           currentAbilityCodes={Object.entries(selectedDraft)
             .filter(([, value]) => isActiveAbilityLevel(parseAbilityDraftValue(value)))
@@ -1820,7 +1794,7 @@ function AbilityReviewModal({
   onDelete: (abilityCode: number) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<AbilityCategory>("all");
+  const [activeCategory, setActiveCategory] = useState<AbilityFilterCategory>("all");
   const normalizedQuery = query.trim().toLowerCase();
   const knownAbilityCodes = new Set(abilities.abilities.map((ability) => ability.code));
   const draftOnlyAbilities: CharacterAbilityValueInfo[] = Object.entries(draftAbilities)
@@ -1833,6 +1807,7 @@ function AbilityReviewModal({
       return {
         code,
         name: `알 수 없음 (${code})`,
+        category: "normal",
         offset: -1,
         value: parseAbilityDraftValue(valueText),
         raw: ""
@@ -1853,7 +1828,7 @@ function AbilityReviewModal({
       title="어빌리티 확인"
       onClose={onClose}
       activeCategory={activeCategory}
-      onCategoryChange={(category) => setActiveCategory(category as AbilityCategory)}
+      onCategoryChange={(category) => setActiveCategory(category as AbilityFilterCategory)}
     >
       <input className="item-picker-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름 또는 코드 검색" />
       {items.length === 0 ? (
@@ -1870,17 +1845,26 @@ function AbilityReviewModal({
                 <div className="inventory-entry">
                   <div className="inventory-row ability-review-row">
                     <div className="inventory-row-main">
-                      <strong>{formatAbilityName(ability.name)}</strong>
-                      <small className="item-stat-text">code {ability.code}</small>
+                      <strong>{getAbilityDisplayParts(ability).name}</strong>
+                      <small className="item-stat-text">{getAbilityDisplayParts(ability).detail ?? `code ${ability.code}`}</small>
                     </div>
-                    <input
-                      aria-label={`${formatAbilityName(ability.name)} 값`}
-                      inputMode="numeric"
-                      min={1}
-                      max={255}
-                      value={draftAbilities[ability.code] ?? String(ability.value)}
-                      onChange={(event) => onChange(abilities.characterCode, ability.code, event.target.value)}
-                    />
+                    <div className="stat-pair-inputs ability-level-inputs">
+                      <input
+                        aria-label={`${formatAbilityName(ability.name)} 현재 레벨`}
+                        inputMode="numeric"
+                        min={1}
+                        max={255}
+                        value={draftAbilities[ability.code] ?? String(ability.value)}
+                        onChange={(event) => onChange(abilities.characterCode, ability.code, event.target.value)}
+                      />
+                      <span className="stat-pair-separator">/</span>
+                      <input
+                        aria-label={`${formatAbilityName(ability.name)} 최대 레벨`}
+                        inputMode="numeric"
+                        value={ability.maxLevel ?? ""}
+                        disabled
+                      />
+                    </div>
                     <button type="button" className="danger-button" onClick={() => onDelete(ability.code)}>
                       삭제
                     </button>
@@ -1937,9 +1921,17 @@ function AbilityPicker({
             type="button"
             className="inventory-add-button"
             disabled={!manualCodeValid || manualAlreadyAdded}
-            onClick={() => onAdd(ABILITY_OPTIONS.find((ability) => ability.code === manualCodeNumber) ?? { code: manualCodeNumber, name: `알 수 없음 (${manualCodeNumber})` })}
+            onClick={() =>
+              onAdd(
+                ABILITY_OPTIONS.find((ability) => ability.code === manualCodeNumber) ?? {
+                  code: manualCodeNumber,
+                  name: `알 수 없음 (${manualCodeNumber})`,
+                  category: "normal"
+                }
+              )
+            }
           >
-            수동 코드 추가
+            추가
           </button>
           <small className="manual-code-help">
             {manualAlreadyAdded ? "이미 추가된 어빌리티 코드입니다." : "코드표에 없는 어빌리티도 직접 추가할 수 있습니다."}
@@ -1967,7 +1959,7 @@ function AbilityPicker({
                     }}
                   >
                     <span className="item-picker-main">
-                      <span className="item-picker-name">{formatAbilityName(ability.name)}</span>
+                      <AbilityPickerText ability={ability} />
                     </span>
                     <small className="item-picker-code">{ability.code}</small>
                   </button>
@@ -1983,7 +1975,7 @@ function AbilityPicker({
 
 function AbilityInfoModal({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<AbilityCategory>("all");
+  const [activeCategory, setActiveCategory] = useState<AbilityFilterCategory>("all");
   const normalizedQuery = query.trim().toLowerCase();
   const items = ABILITY_OPTIONS.filter((ability) => matchesAbilityFilter(ability, activeCategory, normalizedQuery)).sort(compareAbilityOptions);
 
@@ -1992,7 +1984,7 @@ function AbilityInfoModal({ onClose }: { onClose: () => void }) {
       title="전체 어빌리티 정보"
       onClose={onClose}
       activeCategory={activeCategory}
-      onCategoryChange={(category) => setActiveCategory(category as AbilityCategory)}
+      onCategoryChange={(category) => setActiveCategory(category as AbilityFilterCategory)}
     >
       <input className="item-picker-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름 또는 코드 검색" />
       <div className="item-picker-list inventory-picker-list ability-picker-list">
@@ -2005,7 +1997,7 @@ function AbilityInfoModal({ onClose }: { onClose: () => void }) {
               {showGroupDivider ? <div className="item-group-divider picker-group-divider">{groupLabel}</div> : null}
               <div className="item-picker-row ability-picker-row">
                 <span className="item-picker-main">
-                  <span className="item-picker-name">{formatAbilityName(ability.name)}</span>
+                  <AbilityPickerText ability={ability} />
                 </span>
                 <small className="item-picker-code">{ability.code}</small>
               </div>
@@ -2045,7 +2037,7 @@ function AbilityModalShell({
         </header>
         <div className="item-picker-body">
           <aside className="item-picker-sidebar">
-            {(["all", "normal", "equipped", "special"] as AbilityCategory[]).map((category) => (
+            {(["all", "normal", "equipped", "special", "legionSpecial", "specialUnlock", "dummy"] as AbilityFilterCategory[]).map((category) => (
               <button
                 key={category}
                 type="button"
@@ -2063,7 +2055,7 @@ function AbilityModalShell({
                   className={activeCategory === "manual" ? "picker-tab active" : "picker-tab"}
                   onClick={() => onCategoryChange("manual")}
                 >
-                  수동 코드
+                  수동 코드 입력
                 </button>
               </>
             ) : null}
@@ -2488,8 +2480,8 @@ type EquipmentPickerItem = {
 
 type PickerCategory = InventoryItemCategory | "all";
 type EquipmentPickerCategory = PickerCategory | "manual";
-type AbilityCategory = "all" | "normal" | "equipped" | "special";
-type AbilityPickerCategory = AbilityCategory | "manual";
+type AbilityFilterCategory = AbilityCategory | "all";
+type AbilityPickerCategory = AbilityFilterCategory | "manual";
 
 function EquipmentPicker({
   slotKey,
@@ -2973,21 +2965,41 @@ function getEquipmentSelectOptions(slot: EquipmentSlotKey, currentValue: number)
   return [{ code: currentValue, name: "현재 저장값" }, ...options];
 }
 
+function AbilityPickerText({ ability }: { ability: AbilityOption }) {
+  const display = getAbilityDisplayParts(ability);
+  return (
+    <>
+      <span className="item-picker-name">{display.name}</span>
+      {display.detail ? <small className="item-stat-text">{display.detail}</small> : null}
+    </>
+  );
+}
+
 function formatAbilityName(name: string): string {
   return name.replace(/\s*\(/g, " (");
 }
 
-function getAbilityCategory(ability: AbilityOption): AbilityCategory {
-  if (/증가$/.test(ability.name)) {
-    return "equipped";
+function getAbilityDisplayParts(ability: AbilityOption): { name: string; detail?: string } {
+  if (ability.category === "dummy") {
+    return { name: ability.name, detail: "더미" };
   }
-  if (/\([^)]*\)$/.test(ability.name)) {
-    return "special";
+  if (ability.category === "legionSpecial" && ability.legion) {
+    return {
+      name: ability.name,
+      detail: ability.character ? `${ability.legion} / ${ability.character}` : ability.legion
+    };
   }
-  return "normal";
+  if (ability.character) {
+    return { name: ability.name, detail: ability.character };
+  }
+  return { name: ability.name };
 }
 
-function getAbilityCategoryLabel(category: AbilityCategory): string {
+function getAbilityCategory(ability: AbilityOption): AbilityCategory {
+  return ability.category;
+}
+
+function getAbilityCategoryLabel(category: AbilityFilterCategory): string {
   if (category === "normal") {
     return "일반 어빌리티";
   }
@@ -2996,6 +3008,15 @@ function getAbilityCategoryLabel(category: AbilityCategory): string {
   }
   if (category === "special") {
     return "필살기";
+  }
+  if (category === "legionSpecial") {
+    return "군단 필살기";
+  }
+  if (category === "specialUnlock") {
+    return "필살기 획득용";
+  }
+  if (category === "dummy") {
+    return "더미";
   }
   return "전체";
 }
@@ -3008,21 +3029,37 @@ function getAbilityCategoryRank(ability: AbilityOption): number {
   if (category === "equipped") {
     return 1;
   }
-  return 2;
+  if (category === "special") {
+    return 2;
+  }
+  if (category === "legionSpecial") {
+    return 3;
+  }
+  if (category === "specialUnlock") {
+    return 4;
+  }
+  return 5;
 }
 
 function compareAbilityOptions(a: AbilityOption, b: AbilityOption): number {
   return getAbilityCategoryRank(a) - getAbilityCategoryRank(b) || a.code - b.code;
 }
 
-function matchesAbilityFilter(ability: AbilityOption, category: AbilityCategory, normalizedQuery: string): boolean {
+function matchesAbilityFilter(ability: AbilityOption, category: AbilityFilterCategory, normalizedQuery: string): boolean {
   if (category !== "all" && getAbilityCategory(ability) !== category) {
     return false;
   }
   if (!normalizedQuery) {
     return true;
   }
-  return formatAbilityName(ability.name).toLowerCase().includes(normalizedQuery) || String(ability.code).includes(normalizedQuery);
+  const display = getAbilityDisplayParts(ability);
+  return (
+    formatAbilityName(ability.name).toLowerCase().includes(normalizedQuery) ||
+    display.name.toLowerCase().includes(normalizedQuery) ||
+    (display.detail?.toLowerCase().includes(normalizedQuery) ?? false) ||
+    (ability.legion?.toLowerCase().includes(normalizedQuery) ?? false) ||
+    String(ability.code).includes(normalizedQuery)
+  );
 }
 
 function getEquipmentPickerItems(slot: EquipmentSlotKey, currentValue: number): EquipmentPickerItem[] {

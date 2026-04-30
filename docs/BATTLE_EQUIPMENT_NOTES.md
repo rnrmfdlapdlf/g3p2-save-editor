@@ -2,8 +2,6 @@
 
 This document records in-progress research about battle equipment offsets, battle-unit records, and battle-time money/inventory copies.
 
-These findings are not yet confirmed enough for `AGENTS.md`. Move only stable, verified facts into `AGENTS.md` after additional validation.
-
 ## Current Working Hypothesis
 
 Battle equipment appears to be stored in battle-unit records, not in the fixed 25 field character records.
