@@ -713,15 +713,22 @@ export default function App() {
                 onChange={updateCharacterAbility}
               />
             ) : activeCharacterTab === "appearance" ? (
-              <EquipmentEditor
-                mode="appearance"
-                save={save}
-                scope={activeDataScope}
-                selectedCode={selectedEquipmentCode}
-                draftEquipment={draftEquipment[activeDataScope]}
-                onChange={updateCharacterEquipmentSlot}
-                onWeaponDetailChange={updateCharacterWeaponDetail}
-              />
+              <>
+                {activeDataScope === "battle" ? (
+                  <div className="equipment-note">
+                    <small>즉시 적용을 원하는 경우 일반탭에서 외형을 변경 한 후 전투를 재시작하세요.</small>
+                  </div>
+                ) : null}
+                <EquipmentEditor
+                  mode="appearance"
+                  save={save}
+                  scope={activeDataScope}
+                  selectedCode={selectedEquipmentCode}
+                  draftEquipment={draftEquipment[activeDataScope]}
+                  onChange={updateCharacterEquipmentSlot}
+                  onWeaponDetailChange={updateCharacterWeaponDetail}
+                />
+              </>
             ) : (
               <>
                 <div className="equipment-slots">

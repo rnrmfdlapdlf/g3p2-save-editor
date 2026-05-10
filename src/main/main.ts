@@ -17,7 +17,7 @@ async function createWindow(): Promise<void> {
     minWidth: 1500,
     minHeight: 620,
     backgroundColor: "#f7f9fa",
-    title: "G3P2 Save Editor",
+    title: "G3P2 Save Editor v1.0.2",
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
