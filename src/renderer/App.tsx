@@ -135,6 +135,7 @@ const characterAppearancePresets: CharacterAppearancePreset[] = [
   { id: "베라모드 (마에라드)", code: 223, name: "베라모드 (마에라드)", values: { face: 673, name: 462, job: 1399, voice: 35, body: 507, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
   { id: "살라딘", code: 219, name: "살라딘", values: { face: 674, name: 463, job: 951, voice: 23, body: 347, weaponAttackType: 1, weaponType: 0, weaponPicType: 49 } },
   { id: "살라딘 (크로슬리 커스텀)", code: 219, name: "살라딘 (크로슬리 커스텀)", values: { face: 674, name: 463, job: 951, voice: 23, body: 1185, weaponAttackType: 1, weaponType: 0, weaponPicType: 52 } },
+  { id: "살라딘 (코어 헌터)", code: 219, name: "살라딘 (코어 헌터)", values: { face: 674, name: 463, job: 951, voice: 23, body: 439, weaponAttackType: 1, weaponType: 0, weaponPicType: 50 } },
   { id: "샤크바리", code: 245, name: "샤크바리", values: { face: 675, name: 1943, job: 1986, voice: 24, body: 202, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
   { id: "슈", code: 36, name: "슈", values: { face: 766, name: 1898, job: 2347, voice: 5, body: 1166, weaponAttackType: 6, weaponType: 1479, weaponPicType: 53 } },
   { id: "슈로 위장한 진", code: 36, name: "슈로 위장한 진", values: { face: 766, name: 2423, job: 1998, voice: 5, body: 1166, weaponAttackType: 1479, weaponType: 1479, weaponPicType: 0 } },
@@ -144,6 +145,7 @@ const characterAppearancePresets: CharacterAppearancePreset[] = [
   { id: "유진", code: 244, name: "유진", values: { face: 756, name: 472, job: 1991, voice: 27, body: 900, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
   { id: "젠 (아슈레이)", code: 57, name: "젠 (아슈레이)", values: { face: 677, name: 2392, job: 1991, voice: 34, body: 597, weaponAttackType: 1, weaponType: 0, weaponPicType: 48 } },
   { id: "죠안", code: 221, name: "죠안", values: { face: 685, name: 475, job: 951, voice: 1, body: 338, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { id: "죠안 (코어 헌터)", code: 221, name: "죠안 (코어 헌터)", values: { face: 685, name: 475, job: 951, voice: 1, body: 441, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
   { id: "진", code: 239, name: "진", values: { face: 762, name: 1899, job: 2347, voice: 5, body: 1167, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },  // 외형과 데이터가 일치하지 않음. 게임 버그로 보여 외형에 맞게 수동 변경  
   { id: "카를로스", code: 64, name: "카를로스", values: { face: 686, name: 477, job: 2124, voice: 28, body: 641, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
   { id: "크리스티앙", code: 220, name: "크리스티앙", values: { face: 688, name: 479, job: 1296, voice: 32, body: 323, weaponAttackType: 6, weaponType: 12, weaponPicType: 44 } },
@@ -184,25 +186,35 @@ export default function App() {
   const activeParty = save?.parties[activeEpisode];
   const activePartyCodes =
     activeDataScope === "battle"
-      ? (save?.equipment.battle.filter((equipment) => equipment.supported).map((equipment) => equipment.characterCode) ?? [])
+      ? (save ? getBattleSelectableCharacterCodes(save) : [])
       : draftParties[activeEpisode];
+  const writableTargets = useMemo(
+    () =>
+      save
+        ? dataScopes.flatMap((scope) =>
+            episodeKeys
+              .filter(
+                (episode) =>
+                  save.money[scope][episode].supported || save.inventorySlots[scope][episode].length > 0
+              )
+              .map((episode) => ({ scope, episode }))
+          )
+        : [],
+    [save]
+  );
   const allMoneyNumbers = useMemo(
     () =>
-      dataScopes.flatMap((scope) =>
-        episodeKeys.map((episode) => Number(draftMoney[scope][episode].replaceAll(",", "")))
-      ),
-    [draftMoney]
+      writableTargets.map(({ scope, episode }) => Number(draftMoney[scope][episode].replaceAll(",", ""))),
+    [draftMoney, writableTargets]
   );
   const allInventoryNumbers = useMemo(
     () =>
-      dataScopes.flatMap((scope) =>
-        episodeKeys.flatMap((episode) =>
-          draftInventory[scope][episode].map((item) =>
-            item.quantity === "" ? 0 : Number(item.quantity.replaceAll(",", ""))
-          )
+      writableTargets.flatMap(({ scope, episode }) =>
+        draftInventory[scope][episode].map((item) =>
+          item.quantity === "" ? 0 : Number(item.quantity.replaceAll(",", ""))
         )
       ),
-    [draftInventory]
+    [draftInventory, writableTargets]
   );
   const statDraftsValid = useMemo(() => {
     return save ? areStatDraftsValid(save.stats, draftStats) : true;
@@ -210,16 +222,20 @@ export default function App() {
   const abilityDraftsValid = useMemo(() => {
     return save ? areAbilityDraftsValid(save.abilities, draftAbilities) : true;
   }, [save, draftAbilities]);
+  const activePartyFaceCodes = useMemo(() => {
+    const faceCodes = new Map<number, number>();
+    for (const equipment of save?.equipment[activeDataScope] ?? []) {
+      const draftFace = draftEquipment[activeDataScope][equipment.characterCode]?.face;
+      const faceCode = draftFace ?? equipment.face?.value;
+      if (typeof faceCode === "number" && faceCode > 0) {
+        faceCodes.set(equipment.characterCode, faceCode);
+      }
+    }
+    return faceCodes;
+  }, [activeDataScope, draftEquipment, save]);
   const electronApi = window.g3p2SaveEditor;
   const saveActionLabel = electronApi ? "저장" : "다운로드";
-  const canWrite = Boolean(
-    save &&
-      (electronApi || browserSaveBytes) &&
-      allMoneyNumbers.every(isValidMoney) &&
-      allInventoryNumbers.every(isValidCount) &&
-      statDraftsValid &&
-      abilityDraftsValid
-  );
+  const canWrite = Boolean(save && (electronApi || browserSaveBytes));
 
   async function loadSave(loader: () => Promise<LoadedSave | null>, cancelMessage: string) {
     setBusy(true);
@@ -346,26 +362,33 @@ export default function App() {
 
     const money = buildMoneyEdits(draftMoney);
     const inventorySlots = buildInventorySlotEdits(draftInventory);
+    const hasInvalidMoney = !writableTargets.every(({ scope, episode }) => isValidMoney(money[scope][episode]));
+    const hasInvalidInventory = !writableTargets
+      .flatMap(({ scope, episode }) => inventorySlots[scope]![episode]!.map((item) => item.quantity))
+      .every(isValidCount);
+    const hasInvalidStats = !areStatDraftsValid(save.stats, draftStats);
+    const hasInvalidAbilities = !areAbilityDraftsValid(save.abilities, draftAbilities);
 
-    if (!dataScopes.every((scope) => episodeKeys.every((episode) => isValidMoney(money[scope][episode])))) {
-      setStatus("돈 값은 0 이상의 정수여야 합니다.");
-      return;
-    }
-    if (
-      !dataScopes
-        .flatMap((scope) => episodeKeys.flatMap((episode) => inventorySlots[scope]![episode]!.map((item) => item.quantity)))
-        .every(isValidCount)
-    ) {
-      setStatus("소모품/장비 수량은 0~99 사이의 정수여야 합니다.");
-      return;
-    }
-    if (!areStatDraftsValid(save.stats, draftStats)) {
-      setStatus("스탯 값은 0~65535 사이의 정수여야 합니다. 현재 TP는 -32768~32767 범위를 사용할 수 있습니다.");
-      return;
-    }
-    if (!areAbilityDraftsValid(save.abilities, draftAbilities)) {
-      setStatus("어빌리티 값은 1~20 또는 255여야 합니다.");
-      return;
+    if (hasInvalidMoney || hasInvalidInventory || hasInvalidStats || hasInvalidAbilities) {
+      const warnings: string[] = [];
+      if (hasInvalidMoney) {
+        warnings.push("돈 값은 0 이상의 정수여야 합니다.");
+      }
+      if (hasInvalidInventory) {
+        warnings.push("소모품/장비 수량은 0~99 사이의 정수여야 합니다.");
+      }
+      if (hasInvalidStats) {
+        warnings.push("스탯 값은 0~65535 사이의 정수여야 합니다. 현재 TP는 -32768~32767 범위를 사용할 수 있습니다.");
+      }
+      if (hasInvalidAbilities) {
+        warnings.push("어빌리티 값은 1~20 또는 255여야 합니다.");
+      }
+
+      const approved = window.confirm(`${warnings.join("\n")}\n\n이 상태로 저장을 시도할까요?`);
+      if (!approved) {
+        setStatus("저장이 취소되었습니다.");
+        return;
+      }
     }
 
     const edits: SaveEditRequest = {
@@ -666,6 +689,7 @@ export default function App() {
           <PartyEditor
             party={activeParty}
             codes={activePartyCodes}
+            faceCodes={activePartyFaceCodes}
             readOnly={activeDataScope === "battle"}
             selectedCode={selectedEquipmentCode}
             onAdd={addPartyMember}
@@ -1297,6 +1321,7 @@ function ItemInfoModal({ onClose }: { onClose: () => void }) {
 function PartyEditor({
   party,
   codes,
+  faceCodes,
   readOnly = false,
   selectedCode,
   onAdd,
@@ -1306,6 +1331,7 @@ function PartyEditor({
 }: {
   party?: PartyInfo;
   codes: number[];
+  faceCodes: ReadonlyMap<number, number>;
   readOnly?: boolean;
   selectedCode: number | null;
   onAdd: (code: number) => void;
@@ -1372,8 +1398,7 @@ function PartyEditor({
                   }}
                   onDragEnd={() => setDragIndex(null)}
                 >
-                  <span className="drag-handle">::</span>
-                  <span className="member-slot">{index + 1}</span>
+                  <FaceIcon faceCode={faceCodes.get(code)} />
                   <span className="member-details">
                     <span className="member-name">{CHARACTER_NAMES.get(code) ?? `알 수 없음 (${code})`}</span>
                     <small className="member-code">code {code}</small>
@@ -2263,15 +2288,22 @@ function CharacterDetailPickerButton({
   onOpen: () => void;
 }) {
   const selectedOption = getWeaponDetailOptions(field.options, value).find((option) => option.code === value);
+  const isFaceField = field.key === "face";
   return (
     <div className="equipment-field">
       <span>{field.label}</span>
-      <button type="button" className="appearance-picker-button" onClick={onOpen}>
-        <span className="appearance-picker-main">
+      <button
+        type="button"
+        className={isFaceField ? "appearance-picker-button face-appearance-picker-button" : "appearance-picker-button"}
+        onClick={onOpen}
+      >
+        {isFaceField ? <FaceIcon faceCode={value} /> : null}
+        <span className={isFaceField ? "appearance-picker-main face-appearance-picker-main" : "appearance-picker-main"}>
           <strong>{selectedOption?.name ?? "현재 저장값"}</strong>
-          <small>{value}</small>
+          {!isFaceField ? <small>{value}</small> : null}
         </span>
-        <span className="appearance-picker-action">변경</span>
+        {isFaceField ? <small className="appearance-picker-code">{value}</small> : null}
+        {isFaceField ? null : <span className="appearance-picker-action">변경</span>}
       </button>
     </div>
   );
@@ -2317,6 +2349,8 @@ function CharacterDetailPicker({
   const [activeTab, setActiveTab] = useState<"all" | "manual">("all");
   const [manualCode, setManualCode] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
+  const isFaceField = field.key === "face";
+  const manualFaceCode = Number(manualCode.trim());
   const options = getWeaponDetailOptions(field.options, currentValue).filter((option) => {
     if (activeTab === "manual") {
       return false;
@@ -2373,6 +2407,11 @@ function CharacterDetailPicker({
                 confirmMessage="65535를 넘는 코드입니다. 그래도 추가할까요?"
                 onChange={setManualCode}
                 onAdd={onSelect}
+                preview={
+                  isFaceField && Number.isInteger(manualFaceCode)
+                    ? <FaceIcon faceCode={manualFaceCode} />
+                    : undefined
+                }
               />
             ) : (
               <>
@@ -2382,22 +2421,37 @@ function CharacterDetailPicker({
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="이름 또는 코드 검색"
                 />
-                <div className="item-picker-list">
+                <div className={isFaceField ? "item-picker-list face-picker-list" : "item-picker-list"}>
                   {options.map((option) => {
                     const selected = option.code === currentValue;
                     return (
                       <button
                         key={option.code}
                         type="button"
-                        className={selected ? "item-picker-row disabled" : "item-picker-row"}
+                        className={[
+                          selected ? "item-picker-row disabled" : "item-picker-row",
+                          isFaceField ? "face-picker-row" : ""
+                        ].filter(Boolean).join(" ")}
                         onClick={() => {
                           if (!selected) {
                             onSelect(option.code);
                           }
                         }}
                       >
-                        <span>{option.name}</span>
-                        <small>{option.code}</small>
+                        {isFaceField ? (
+                          <>
+                            <FaceIcon faceCode={option.code} />
+                            <span className="item-picker-main">
+                              <span>{option.name}</span>
+                            </span>
+                            <small className="item-picker-code">{option.code}</small>
+                          </>
+                        ) : (
+                          <>
+                            <span>{option.name}</span>
+                            <small>{option.code}</small>
+                          </>
+                        )}
                       </button>
                     );
                   })}
@@ -2635,7 +2689,8 @@ function ManualCodeInput({
   helpText,
   confirmMessage,
   onChange,
-  onAdd
+  onAdd,
+  preview
 }: {
   value: string;
   ariaLabel: string;
@@ -2643,6 +2698,7 @@ function ManualCodeInput({
   confirmMessage: string;
   onChange: (value: string) => void;
   onAdd: (code: number) => void;
+  preview?: React.ReactNode;
 }) {
   const trimmedValue = value.trim();
   const parsedCode = Number(trimmedValue);
@@ -2650,7 +2706,7 @@ function ManualCodeInput({
   return (
     <div className="manual-code-panel">
       <div className="manual-code-editor">
-        <ItemIcon item={{ unknown: true }} />
+        {preview ?? <ItemIcon item={{ unknown: true }} />}
         <input
           aria-label={ariaLabel}
           inputMode="numeric"
@@ -2682,6 +2738,26 @@ function ManualCodeInput({
       </button>
       <small className="manual-code-help">{helpText}</small>
     </div>
+  );
+}
+
+function FaceIcon({
+  faceCode
+}: {
+  faceCode?: number | null;
+}) {
+  const src = getFaceIconSrc(faceCode);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFailedSrc(null);
+  }, [src]);
+
+  const shouldShowImage = Boolean(src && failedSrc !== src);
+  return (
+    <span className="face-icon-slot" aria-hidden="true">
+      {shouldShowImage ? <img src={src} alt="" onError={() => setFailedSrc(src ?? null)} /> : null}
+    </span>
   );
 }
 
@@ -2962,6 +3038,13 @@ function getItemIconSrc(
     return getAssetSrc("item-icons/shoes.png");
   }
   return item ? getAssetSrc("item-icons/unknown.png") : undefined;
+}
+
+function getFaceIconSrc(faceCode?: number | null): string | undefined {
+  if (!Number.isInteger(faceCode) || !faceCode || faceCode <= 0) {
+    return undefined;
+  }
+  return getAssetSrc(`face-icons/${String(faceCode).padStart(4, "0")}.png`);
 }
 
 function getEquipmentSelectOptions(slot: EquipmentSlotKey, currentValue: number): EquipmentOption[] {
@@ -3443,7 +3526,7 @@ function isMainTabAvailable(save: SaveInfo, tabKey: MainTabKey): boolean {
 
 function getSelectableCharacterCodes(save: SaveInfo, tab: MainTab): number[] {
   if (tab.scope === "battle") {
-    const battleCodes = save.equipment.battle.filter((equipment) => equipment.supported).map((equipment) => equipment.characterCode);
+    const battleCodes = getBattleSelectableCharacterCodes(save);
     if (battleCodes.length > 0) {
       return battleCodes;
     }
@@ -3460,6 +3543,20 @@ function getSelectableCharacterCodes(save: SaveInfo, tab: MainTab): number[] {
     return fieldCodes;
   }
   return save.mercenaries.field.filter((mercenary) => mercenary.supported).map((mercenary) => mercenary.characterCode);
+}
+
+function getBattleSelectableCharacterCodes(save: SaveInfo): number[] {
+  const statLevels = new Map<number, number>();
+  for (const item of save.stats.battle) {
+    const level = item.fields.find((field) => field.key === "level")?.value;
+    if (typeof level === "number") {
+      statLevels.set(item.characterCode, level);
+    }
+  }
+
+  return save.equipment.battle
+    .filter((equipment) => equipment.supported && (statLevels.get(equipment.characterCode) ?? 0) > 0)
+    .map((equipment) => equipment.characterCode);
 }
 
 function isValidMoney(value: number): boolean {

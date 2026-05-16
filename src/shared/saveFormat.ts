@@ -345,6 +345,67 @@ const BATTLE_INVENTORY_TABLES = {
   }
 } satisfies Record<string, InventoryTable>;
 
+type BattleInventorySceneProfile = {
+  episode: SaveEpisodeLabel;
+  episode4?: InventoryTable;
+  episode5?: InventoryTable;
+  episode5InEpisode4Battle?: InventoryTable;
+};
+
+const BATTLE_INVENTORY_SCENE_TABLES: Record<number, BattleInventorySceneProfile> = {
+  1088: {
+    episode: "에피소드4",
+    episode4: {
+      countOffset: 0xadaf,
+      startOffset: 0xadb7
+    },
+    episode5InEpisode4Battle: {
+      countOffset: 0xbe5f,
+      startOffset: 0xbe67
+    }
+  },
+  1401: {
+    episode: "에피소드5",
+    episode5: {
+      countOffset: 0xbe41,
+      startOffset: 0xbe49
+    }
+  },
+  1591: {
+    episode: "에피소드4",
+    episode4: {
+      countOffset: 0xad9b,
+      startOffset: 0xada3
+    },
+    episode5InEpisode4Battle: {
+      countOffset: 0xbe4b,
+      startOffset: 0xbe53
+    }
+  },
+  1592: {
+    episode: "에피소드4",
+    episode4: {
+      countOffset: 0xad9b,
+      startOffset: 0xada3
+    },
+    episode5InEpisode4Battle: {
+      countOffset: 0xbe4b,
+      startOffset: 0xbe53
+    }
+  },
+  1644: {
+    episode: "에피소드4",
+    episode4: {
+      countOffset: 0xb261,
+      startOffset: 0xb269
+    },
+    episode5InEpisode4Battle: {
+      countOffset: 0xc311,
+      startOffset: 0xc319
+    }
+  }
+};
+
 export const PARTY_OFFSETS: Record<EpisodeKey, { label: string; offset: number }> = {
   episode4: { label: "영혼의 검", offset: 0x62f0 },
   episode5: { label: "뫼비우스의 우주", offset: 0x73a0 }
@@ -483,12 +544,40 @@ export const WEAPON_ATTACK_TYPE_OPTIONS: Array<{ code: number; name: string }> =
 
 export const CHARACTER_FACE_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 0, name: "없음" },
+  // { code: 156, name: "얼굴 0156" },
+  { code: 195, name: "샤크바리" },
   { code: 229, name: "UNKNOWN" },
+  { code: 314, name: "네리사" },
+  { code: 317, name: "살라딘" },
+  { code: 318, name: "죠안" },
+  { code: 319, name: "크리스티앙" },
+  { code: 342, name: "크리스티앙" },
+  { code: 345, name: "크리스티앙" },
+  // { code: 346, name: "VT SHOP" },
+  // { code: 351, name: "ITEM SHOP" },
+  { code: 356, name: "해커" },
+  { code: 357, name: "필그림(남)" },
+  { code: 358, name: "필그림(여)" },
+  { code: 359, name: "필그림(여)" },
+  { code: 360, name: "필그림(남)" },
+  { code: 361, name: "필그림(남)" },
   { code: 362, name: "아돌" },
+  { code: 363, name: "필그림(남)" },
   { code: 364, name: "필그림(여)" },
+  { code: 369, name: "제이슨" },
+  // { code: 375, name: "상점 주인" },
+  { code: 377, name: "죠안" },
+  { code: 387, name: "살라딘" },
+  { code: 407, name: "얼굴 0407" },
   { code: 408, name: "카렐라" },
   { code: 433, name: "제이슨" },
+  { code: 445, name: "아셀라스" },
+  { code: 446, name: "샤크바리" },
+  // { code: 447, name: "얼굴 0447" },
+  { code: 448, name: "엠블라" },
   { code: 454, name: "아지다하카" },
+  { code: 493, name: "소프트맥스" },
+  // { code: 534, name: "베라모드" },
   { code: 573, name: "칼리오페" },
   { code: 574, name: "이반" },
   { code: 655, name: "네리사" },
@@ -496,45 +585,77 @@ export const CHARACTER_FACE_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 657, name: "데미안" },
   { code: 658, name: "란" },
   { code: 659, name: "레드헤드" },
-  { code: 668, name: "리엔" },
-  { code: 669, name: "리차드" },
+  { code: 660, name: "루시엔" },
+  { code: 668, name: "리엔 샤이나" },
+  { code: 669, name: "리차드 레마르크" },
   { code: 671, name: "마리아" },
-  { code: 672, name: "바룬" },
+  { code: 672, name: "바룬 총독" },
   { code: 673, name: "베라모드" },
   { code: 674, name: "살라딘" },
   { code: 675, name: "샤크바리" },
   { code: 676, name: "아셀라스" },
   { code: 677, name: "아슈레이" },
   { code: 679, name: "엠블라" },
+  { code: 683, name: "엠블라" },
+  { code: 684, name: "제이슨" },
   { code: 685, name: "죠안" },
   { code: 686, name: "카를로스" },
+  { code: 687, name: "닥터 K" },
   { code: 688, name: "크리스티앙" },
   { code: 751, name: "루크랜서드" },
   { code: 756, name: "유진" },
   { code: 759, name: "아만딘" },
-  { code: 762, name: "진" },
-  { code: 766, name: "슈" },
+  { code: 762, name: "진 라휘나" },
+  { code: 766, name: "슈 라휘나" },
+  { code: 769, name: "더미 1" },
+  { code: 770, name: "더미 2" },
   { code: 781, name: "손나딘" },
+  { code: 782, name: "시빌라" },
+  { code: 783, name: "써니" },
+  { code: 786, name: "퉁 파오" },
   { code: 789, name: "루시엔" },
+  { code: 801, name: "프라이오스" },
+  { code: 886, name: "셰라자드" },
   { code: 974, name: "나탈리" },
-  { code: 1047, name: "유블레인" },
+  { code: 1047, name: "리벤" },
+  { code: 1048, name: "이드" },
+  { code: 1049, name: "닥터 K" },
   { code: 1052, name: "하이델룬" },
   { code: 1078, name: "해커" },
+  { code: 1079, name: "얼굴 1079" },
   { code: 1080, name: "스턴(코어헌터)" },
   { code: 1081, name: "로브" },
   { code: 1082, name: "루칼드" },
+  { code: 1083, name: "얼굴 1083" },
   { code: 1084, name: "로드" },
   { code: 1085, name: "아델룬" },
   { code: 1086, name: "켄" },
   { code: 1087, name: "해적" },
   { code: 1088, name: "엘더마스터" },
   { code: 1089, name: "광신도" },
+  { code: 1090, name: "얼굴 1090" },
+  { code: 1091, name: "얼굴 1091" },
   { code: 1092, name: "무녀" },
+  { code: 1093, name: "MOSESS" },
+  { code: 1094, name: "두아인 샤이나" },
+  { code: 1095, name: "얼굴 1095" },
+  { code: 1099, name: "칼리오페" },
+  { code: 1100, name: "이반" },
   { code: 1101, name: "바루스" },
+  { code: 1108, name: "준 레오파드" },
+  { code: 1109, name: "얼굴 1109" },
   { code: 1110, name: "테오렐" },
+  // { code: 1201, name: "얼굴 1201" },
+  // { code: 1203, name: "얼굴 1203" },
+  { code: 1206, name: "죠엘" },
+  // { code: 1225, name: "살라딘" },
+  // { code: 1282, name: "T&T 국장" },
+  { code: 1286, name: "미쉘" },
+  { code: 1287, name: "유블레인" },
   { code: 1288, name: "나야트레이" },
-  { code: 2004, name: "우주말벌" },
-  { code: 2323, name: "슬라임3형제" }
+  // { code: 1340, name: "페이온" },
+  { code: 1412, name: "명장 크로슬리" },
+  { code: 1450, name: "엠블라" }
 ];
 
 export const CHARACTER_NAME_OPTIONS: Array<{ code: number; name: string }> = [
@@ -553,7 +674,7 @@ export const CHARACTER_NAME_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 456, name: "리엔" },
   { code: 458, name: "마리아" },
   { code: 459, name: "리차드" },
-  { code: 460, name: "바룬" },
+  { code: 460, name: "바룬 총독" },
   { code: 462, name: "베라모드" },
   { code: 463, name: "살라딘" },
   { code: 464, name: "손나딘" },
@@ -679,8 +800,6 @@ export const CHARACTER_VOICE_OPTIONS: Array<{ code: number; name: string }> = [
 export const CHARACTER_BODY_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 0, name: "없음" },
   { code: 55, name: "아셀라스" },
-  { code: 62, name: "대화모습 (죠안, 보통)" },
-  { code: 63, name: "대화모습 (크리스티앙, 보통)" },
   { code: 202, name: "샤크바리" },
   { code: 256, name: "데미안" },
   { code: 323, name: "크리스티앙" },
@@ -688,6 +807,8 @@ export const CHARACTER_BODY_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 347, name: "살라딘" },
   { code: 368, name: "제이슨" },
   { code: 392, name: "엠블라" },
+  { code: 439, name: "살라딘 (코어 헌터)" },
+  { code: 441, name: "죠안 (코어 헌터)" },
   { code: 506, name: "베라모드" },
   { code: 507, name: "베라모드 (마에라드)" },
   { code: 540, name: "칼리오페" },
@@ -1385,10 +1506,15 @@ function readSaveEpisode(data: Uint8Array): SaveInfo["episode"] {
 
 function getSaveEpisodeLabel(data: Uint8Array): SaveEpisodeLabel {
   if (readInverseUint32(data, 0x0c) === 1) {
-    if (hasPlausibleInventoryCount(data, BATTLE_INVENTORY_TABLES.episode4)) {
+    const sceneProfile = getBattleInventorySceneProfile(data);
+    if (sceneProfile) {
+      return sceneProfile.episode;
+    }
+
+    if (hasPlausibleInventorySignature(data, BATTLE_INVENTORY_TABLES.episode4)) {
       return "에피소드4";
     }
-    if (hasPlausibleInventoryCount(data, BATTLE_INVENTORY_TABLES.episode5)) {
+    if (hasPlausibleInventorySignature(data, BATTLE_INVENTORY_TABLES.episode5)) {
       return "에피소드5";
     }
   }
@@ -1461,13 +1587,13 @@ function getInventoryTable(data: Uint8Array, scope: SaveDataScope, episode: Epis
     return null;
   }
 
-  const table =
-    episode === "episode4"
-      ? BATTLE_INVENTORY_TABLES.episode4
-      : activeEpisode === "episode5"
-        ? BATTLE_INVENTORY_TABLES.episode5
-        : BATTLE_INVENTORY_TABLES.episode5InEpisode4Battle;
-  return isInventoryTableInRange(data, table) ? table : null;
+  const preferredTable = getPreferredBattleInventoryTable(data, episode, activeEpisode);
+  if (preferredTable) {
+    return preferredTable;
+  }
+
+  const fallbackTable = findBattleInventoryTableByFieldSignature(data, episode);
+  return fallbackTable && isInventoryTableInRange(data, fallbackTable) ? fallbackTable : null;
 }
 
 function isInventoryTableInRange(data: Uint8Array, table: InventoryTable): boolean {
@@ -1481,6 +1607,115 @@ function hasPlausibleInventoryCount(data: Uint8Array, table: InventoryTable): bo
 
   const count = readInverseUint32(data, table.countOffset);
   return count > 0 && count <= getInventoryWritableLimit(data, table);
+}
+
+function hasPlausibleInventorySignature(data: Uint8Array, table: InventoryTable): boolean {
+  if (!hasPlausibleInventoryCount(data, table)) {
+    return false;
+  }
+
+  const count = readInverseUint32(data, table.countOffset);
+  const checkCount = Math.min(count, 3);
+  if (checkCount <= 0) {
+    return false;
+  }
+
+  for (let index = 0; index < checkCount; index += 1) {
+    const codeOffset = table.startOffset + index * 8;
+    const quantityOffset = codeOffset + 4;
+    if (quantityOffset + 4 > data.length) {
+      return false;
+    }
+
+    const itemCode = readInverseUint32(data, codeOffset);
+    const quantity = readInverseUint32(data, quantityOffset);
+    if (quantity < 1 || quantity > 99 || !getInventoryCatalogItem(itemCode)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function getBattleInventorySceneProfile(data: Uint8Array): BattleInventorySceneProfile | null {
+  return BATTLE_INVENTORY_SCENE_TABLES[readInverseUint32(data, 0x08)] ?? null;
+}
+
+function getPreferredBattleInventoryTable(
+  data: Uint8Array,
+  episode: EpisodeKey,
+  activeEpisode: EpisodeKey
+): InventoryTable | null {
+  const sceneProfile = getBattleInventorySceneProfile(data);
+  if (sceneProfile) {
+    const sceneTable =
+      episode === "episode4"
+        ? sceneProfile.episode4
+        : activeEpisode === "episode5"
+          ? sceneProfile.episode5
+          : sceneProfile.episode5InEpisode4Battle;
+    if (sceneTable && hasPlausibleInventorySignature(data, sceneTable)) {
+      return sceneTable;
+    }
+  }
+
+  const defaultTable =
+    episode === "episode4"
+      ? BATTLE_INVENTORY_TABLES.episode4
+      : activeEpisode === "episode5"
+        ? BATTLE_INVENTORY_TABLES.episode5
+        : BATTLE_INVENTORY_TABLES.episode5InEpisode4Battle;
+  return hasPlausibleInventorySignature(data, defaultTable) ? defaultTable : null;
+}
+
+function findBattleInventoryTableByFieldSignature(data: Uint8Array, episode: EpisodeKey): InventoryTable | null {
+  const fieldTable = INVENTORY_TABLES[episode];
+  if (!hasPlausibleInventorySignature(data, fieldTable)) {
+    return null;
+  }
+
+  const count = readInverseUint32(data, fieldTable.countOffset);
+  const checkCount = Math.min(count, 5);
+  if (checkCount <= 0) {
+    return null;
+  }
+
+  let bestMatch: InventoryTable | null = null;
+  for (let offset = 0; offset + 8 + checkCount * 8 <= data.length; offset += 1) {
+    if (offset === fieldTable.countOffset || readInverseUint32(data, offset) !== count) {
+      continue;
+    }
+
+    let matched = true;
+    for (let index = 0; index < checkCount; index += 1) {
+      const fieldCodeOffset = fieldTable.startOffset + index * 8;
+      const fieldQuantityOffset = fieldCodeOffset + 4;
+      const codeOffset = offset + 8 + index * 8;
+      const quantityOffset = codeOffset + 4;
+      if (
+        readInverseUint32(data, codeOffset) !== readInverseUint32(data, fieldCodeOffset) ||
+        readInverseUint32(data, quantityOffset) !== readInverseUint32(data, fieldQuantityOffset)
+      ) {
+        matched = false;
+        break;
+      }
+    }
+
+    if (!matched) {
+      continue;
+    }
+
+    const candidate = {
+      countOffset: offset,
+      startOffset: offset + 8
+    };
+    if (hasPlausibleInventorySignature(data, candidate)) {
+      bestMatch = candidate;
+      break;
+    }
+  }
+
+  return bestMatch;
 }
 
 function readMoney(data: Uint8Array, scope: SaveDataScope, episode: EpisodeKey): MoneyInfo {
@@ -1990,6 +2225,9 @@ function readBattleCharacterCodes(data: Uint8Array): number[] {
     if (!isPlausibleBattleEquipmentBlock(data, equipmentOffset)) {
       continue;
     }
+    if (!hasPositiveBattleLevel(data, characterCode)) {
+      continue;
+    }
 
     seen.add(characterCode);
     result.push(characterCode);
@@ -2021,6 +2259,20 @@ function findCharacterEquipmentBaseOffset(data: Uint8Array, characterCode: numbe
   }
 
   return fallbackOffset;
+}
+
+function hasPositiveBattleLevel(data: Uint8Array, characterCode: number): boolean {
+  const baseOffset = getCharacterStatsBaseOffset(data, characterCode, "battle");
+  if (baseOffset === null) {
+    return false;
+  }
+
+  const levelOffset = baseOffset + 0x28;
+  if (levelOffset < 0 || levelOffset + 2 > data.length) {
+    return false;
+  }
+
+  return readInverseUint16(data, levelOffset) > 0;
 }
 
 function looksLikeEquipmentBlock(data: Uint8Array, offset: number): boolean {
