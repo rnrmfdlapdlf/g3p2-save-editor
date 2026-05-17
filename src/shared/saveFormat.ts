@@ -690,6 +690,8 @@ export const CHARACTER_NAME_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 478, name: "칼리오페" },
   { code: 479, name: "크리스티앙" },
   { code: 480, name: "테오렐" },
+  { code: 1071, name: "현혹령" },
+  { code: 1075, name: "아지다하카" },
   { code: 1692, name: "루크랜서드" },
   { code: 1898, name: "슈" },
   { code: 1899, name: "진" },
@@ -2435,13 +2437,14 @@ function readCharacterAbilities(data: Uint8Array, characterCode: number, scope: 
     characterName,
     scope,
     supported: true,
+    // Only known ability codes are auto-read. Unknown bytes may be padding/reserved data.
     abilities: ABILITY_OPTIONS.filter((ability) => abilityBaseOffset + ability.code < data.length).map((ability) => {
       const offset = abilityBaseOffset + ability.code;
       const raw = data[offset];
       return {
         ...ability,
         offset,
-        value: raw === 0xff ? 0xff : 0xff - raw,
+        value: readAbilityRawValue(raw),
         raw: raw.toString(16).padStart(2, "0").toUpperCase()
       };
     })
@@ -2468,10 +2471,17 @@ function applyCharacterAbilitiesEdits(data: Uint8Array, edits: CharacterAbilitie
 }
 
 function writeAbilityValue(data: Uint8Array, offset: number, value: number): void {
+  if (readAbilityRawValue(data[offset]) === value) {
+    return;
+  }
   if (!Number.isInteger(value) || !((value >= 1 && value <= 20) || value === 0xff)) {
     throw new Error("어빌리티 값은 1~20 또는 255여야 합니다.");
   }
   data[offset] = value === 0xff ? 0xff : 0xff - value;
+}
+
+function readAbilityRawValue(raw: number): number {
+  return raw === 0xff ? 0xff : 0xff - raw;
 }
 
 function readCharacterStatsList(data: Uint8Array, scope: EquipmentScope): CharacterStatsInfo[] {

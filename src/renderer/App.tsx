@@ -151,7 +151,9 @@ const characterAppearancePresets: CharacterAppearancePreset[] = [
   { id: "크리스티앙", code: 220, name: "크리스티앙", values: { face: 688, name: 479, job: 1296, voice: 32, body: 323, weaponAttackType: 6, weaponType: 12, weaponPicType: 44 } },
   { id: "하이델룬 (건 슬라이서)", code: 601, name: "하이델룬 (건 슬라이서)", values: { face: 1052, name: 2907, job: 2001, voice: 33, body: 1165, weaponAttackType: 1, weaponType: 0, weaponPicType: 49 } },
   { id: "하이델룬 (핸드건)", code: 601, name: "하이델룬 (핸드건)", values: { face: 1052, name: 2907, job: 2001, voice: 33, body: 1165, weaponAttackType: 6, weaponType: 12, weaponPicType: 44 } },
-  { id: "흑태자", code: 598, name: "흑태자", values: { face: 229, name: 2904, job: 0, voice: 2, body: 1165, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
+  { id: "아레나 흑태자", code: 598, name: "아레나 흑태자", values: { face: 229, name: 2904, job: 2894, voice: 2, body: 1481, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
+  { id: "아레나 레제드람", code: 92, name: "아레나 레제드람", values: { face: 1082, name: 449, job: 2760, voice: 2, body: 1307, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { id: "현혹령", code: 197, name: "현혹령", values: { face: 229, name: 1071, job: 1295, voice: 2, body: 366, weaponAttackType: 1479, weaponType: 0, weaponPicType: 0 } },
 ];
 
 const emptySaveStatus = "G3P_II*.sav 파일을 열거나 여기로 드래그하세요.";
@@ -1564,7 +1566,7 @@ function PartyPicker({
                           className={alreadyAdded ? `item-picker-row disabled ${group}-character` : `item-picker-row ${group}-character`}
                           onClick={() => addPartyCode(character.code)}
                         >
-                          <span>{character.name}</span>
+                            <span>{formatCharacterDisplayName(character.name)}</span>
                           <small>
                             {getCharacterGroupLabel(group)} / {character.code}
                           </small>
@@ -2473,16 +2475,27 @@ function AppearancePresetPicker({
   onSelect: (preset: CharacterAppearancePreset) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [activeGroup, setActiveGroup] = useState<CharacterGroup | "all">("all");
   const normalizedQuery = query.trim().toLowerCase();
   const presets = characterAppearancePresets.filter((preset) => {
+    const group = getCharacterGroup(preset.name);
+    if (activeGroup !== "all" && group !== activeGroup) {
+      return false;
+    }
     if (!normalizedQuery) {
       return true;
     }
     return (
-      preset.name.toLowerCase().includes(normalizedQuery) ||
-      preset.id.toLowerCase().includes(normalizedQuery) ||
+      formatCharacterDisplayName(preset.name).toLowerCase().includes(normalizedQuery) ||
+      formatCharacterDisplayName(preset.id).toLowerCase().includes(normalizedQuery) ||
       String(preset.code).includes(normalizedQuery)
     );
+  }).sort((a, b) => {
+    const groupCompare = getCharacterGroupRank(a.name) - getCharacterGroupRank(b.name);
+    if (groupCompare !== 0) {
+      return groupCompare;
+    }
+    return formatCharacterDisplayName(a.name).localeCompare(formatCharacterDisplayName(b.name), "ko-KR") || a.code - b.code;
   });
 
   return (
@@ -2503,7 +2516,27 @@ function AppearancePresetPicker({
           </button>
         </header>
 
-        <div className="item-picker-body single-pane-picker">
+        <div className="item-picker-body">
+          <aside className="item-picker-sidebar">
+            <button
+              type="button"
+              className={activeGroup === "all" ? "picker-tab active" : "picker-tab"}
+              onClick={() => setActiveGroup("all")}
+            >
+              전체
+            </button>
+            {(["normal", "episode", "arena"] as CharacterGroup[]).map((group) => (
+              <button
+                key={group}
+                type="button"
+                className={activeGroup === group ? "picker-tab active" : "picker-tab"}
+                onClick={() => setActiveGroup(group)}
+              >
+                {getCharacterGroupFilterLabel(group)}
+              </button>
+            ))}
+          </aside>
+
           <section className="item-picker-results">
             <input
               className="item-picker-search"
@@ -2512,16 +2545,28 @@ function AppearancePresetPicker({
               placeholder="이름 또는 코드 검색"
             />
             <div className="item-picker-list">
-              {presets.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  className="item-picker-row appearance-preset-row"
-                  onClick={() => onSelect(preset)}
-                >
-                  <span>{preset.name}</span>
-                </button>
-              ))}
+              {presets.map((preset, index) => {
+                const group = getCharacterGroup(preset.name);
+                const previousGroup = index > 0 ? getCharacterGroup(presets[index - 1].name) : null;
+                const showGroupDivider = group !== previousGroup;
+
+                return (
+                  <React.Fragment key={preset.id}>
+                    {showGroupDivider ? (
+                      <div className="character-divider-row">
+                        <span>{getCharacterGroupLabel(group)}</span>
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={`item-picker-row appearance-preset-row ${group}-character`}
+                      onClick={() => onSelect(preset)}
+                    >
+                      <span>{formatCharacterDisplayName(preset.name)}</span>
+                    </button>
+                  </React.Fragment>
+                );
+              })}
             </div>
           </section>
         </div>
@@ -3404,22 +3449,38 @@ function buildAbilityEdits(abilities: SaveInfo["abilities"], draftAbilities: Dra
   return (["field", "battle"] as EquipmentScope[]).flatMap((scope) =>
     abilities[scope]
       .filter((item) => item.supported && draftAbilities[scope][item.characterCode])
-      .map((item) => ({
-        characterCode: item.characterCode,
-        scope,
-        values: buildAbilityEditValues(item, draftAbilities[scope][item.characterCode])
-      }))
+      .flatMap((item) => {
+        const values = buildAbilityEditValues(item, draftAbilities[scope][item.characterCode]);
+        return Object.keys(values).length > 0
+          ? [
+              {
+                characterCode: item.characterCode,
+                scope,
+                values
+              }
+            ]
+          : [];
+      })
   );
 }
 
 function buildAbilityEditValues(item: CharacterAbilitiesInfo, draft: DraftAbilitiesEntry): Record<number, number> {
   const values = new Map<number, number>();
+  const originalCodes = new Set<number>();
   for (const ability of item.abilities) {
-    values.set(ability.code, parseAbilityDraftValue(draft[ability.code] ?? String(ability.value)));
+    originalCodes.add(ability.code);
+    if (!Object.prototype.hasOwnProperty.call(draft, ability.code)) {
+      continue;
+    }
+
+    const nextValue = parseAbilityDraftValue(draft[ability.code]);
+    if (nextValue !== ability.value) {
+      values.set(ability.code, nextValue);
+    }
   }
   for (const [codeText, valueText] of Object.entries(draft)) {
     const code = Number(codeText);
-    if (Number.isInteger(code) && code >= 0 && code <= 0xff) {
+    if (Number.isInteger(code) && code >= 0 && code <= 0xff && !originalCodes.has(code)) {
       values.set(code, parseAbilityDraftValue(valueText));
     }
   }
@@ -3603,9 +3664,8 @@ function areAbilityDraftsValid(abilities: SaveInfo["abilities"], draftAbilities:
       if (!draft) {
         return true;
       }
-      return Object.entries(draft).every(([codeText, valueText]) => {
+      return Object.entries(buildAbilityEditValues(item, draft)).every(([codeText, value]) => {
         const code = Number(codeText);
-        const value = parseAbilityDraftValue(valueText);
         return Number.isInteger(code) && code >= 0 && code <= 0xff && isValidAbilityLevel(value);
       });
     })
@@ -3631,7 +3691,7 @@ function isActiveAbilityLevel(value: number): boolean {
 type CharacterGroup = "normal" | "episode" | "arena";
 
 function getCharacterGroup(name: string): CharacterGroup {
-  if (name.startsWith("에피소드")) {
+  if (name.startsWith("에피소드") || name.includes("(에피소드") || name.includes("(EP")) {
     return "episode";
   }
   if (name.startsWith("아레나")) {
@@ -3669,6 +3729,14 @@ function getCharacterGroupFilterLabel(group: CharacterGroup): string {
     return "아레나";
   }
   return "일반";
+}
+
+function formatCharacterDisplayName(name: string): string {
+  return name
+    .replaceAll(" (에피소드4)", " (EP4)")
+    .replaceAll(" (에피소드5)", " (EP5)")
+    .replaceAll("(에피소드4)", " (EP4)")
+    .replaceAll("(에피소드5)", " (EP5)");
 }
 
 const inventoryCategoryOptions: Array<{ key: InventoryItemCategory; label: string }> = [
