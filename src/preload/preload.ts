@@ -1,9 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { SaveEditRequest, SaveInfo } from "../shared/saveFormat.js";
+import type { AbilityEncodingRepairInfo, SaveEditRequest, SaveInfo } from "../shared/saveFormat.js";
 
 export type SaveWriteResult = {
   save: SaveInfo;
   backupPath: string;
+};
+
+export type SaveRepairResult = {
+  save: SaveInfo;
+  backupPath: string;
+  repair: AbilityEncodingRepairInfo;
 };
 
 export type SaveEditorApi = {
@@ -11,6 +17,7 @@ export type SaveEditorApi = {
   openSavePath: (filePath: string) => Promise<SaveInfo>;
   getPathForFile: (file: File) => string;
   writeEditedOriginal: (request: { filePath: string; edits: SaveEditRequest }) => Promise<SaveWriteResult>;
+  repairAbilityEncoding: (filePath: string) => Promise<SaveRepairResult>;
   onOpenSaveRequest: (callback: () => void) => () => void;
   onSaveRequest: (callback: () => void) => () => void;
 };
@@ -20,6 +27,7 @@ const api: SaveEditorApi = {
   openSavePath: (filePath) => ipcRenderer.invoke("save:openPath", filePath),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   writeEditedOriginal: (request) => ipcRenderer.invoke("save:writeEditedOriginal", request),
+  repairAbilityEncoding: (filePath) => ipcRenderer.invoke("save:repairAbilityEncoding", filePath),
   onOpenSaveRequest: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("menu:openSave", listener);

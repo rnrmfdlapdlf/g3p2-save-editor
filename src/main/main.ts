@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
 import { rename, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { applySaveEdits, parseSave, SaveEditRequest } from "../shared/saveFormat.js";
+import { applySaveEdits, parseSave, repairAbilityEncodingIssue, SaveEditRequest } from "../shared/saveFormat.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -129,7 +129,45 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle("save:repairAbilityEncoding", async (_event, filePath: string) => {
+  const source = await readFile(filePath);
+  const data = new Uint8Array(source);
+  const repair = repairAbilityEncodingIssue(data);
+  const targetPath = getCanonicalSavePath(filePath);
+
+  if (repair.total === 0) {
+    return {
+      save: parseSave(data, targetPath),
+      backupPath: "",
+      repair
+    };
+  }
+
+  const backupPath = `${targetPath}.${formatTimestamp(new Date())}`;
+
+  try {
+    await rename(targetPath, backupPath);
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? error.code : undefined;
+    if (code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  await writeFile(targetPath, data);
+  return {
+    save: parseSave(data, targetPath),
+    backupPath,
+    repair
+  };
+});
+
 function getCanonicalSavePath(filePath: string): string {
+  const slotMatch = filePath.match(/^(.*[\\/])?(G3P_II\d{2})(?:\s+-\s+.*?)?\.sav(?:\.\d{14})?$/i);
+  if (slotMatch) {
+    return `${slotMatch[1] ?? ""}${slotMatch[2]}.sav`;
+  }
+
   const match = filePath.match(/^(.*\.sav)(?:\.\d{14})?$/i);
   if (!match) {
     throw new Error("G3P_II*.sav 또는 .sav.년월일시분초 파일만 저장할 수 있습니다.");

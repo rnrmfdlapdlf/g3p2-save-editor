@@ -18,9 +18,9 @@ import {
   CHARACTER_BODY_OPTIONS,
   CHARACTER_FACE_OPTIONS,
   CHARACTER_JOB_OPTIONS,
-  CHARACTER_NAMES,
+  CHR_CODE_NAMES,
   CHARACTER_NAME_OPTIONS,
-  CHARACTER_OPTIONS,
+  CHR_CODE_OPTIONS,
   CHARACTER_VOICE_OPTIONS,
   CONSUMABLE_KIND_LABELS,
   ConsumableKind,
@@ -39,6 +39,7 @@ import {
   MoneyInfo,
   PARTY_MEMBER_LIMIT,
   parseSave,
+  repairAbilityEncodingIssue,
   SaveEditRequest,
   SaveDataScope,
   PartyInfo,
@@ -56,9 +57,11 @@ type DraftMoney = Record<SaveDataScope, Record<EpisodeKey, string>>;
 type DraftInventorySlot = { itemCode: number; quantity: string };
 type DraftInventory = Record<SaveDataScope, Record<EpisodeKey, DraftInventorySlot[]>>;
 type CharacterDetailKey = "face" | "name" | "job" | "voice" | "body" | "weaponAttackType" | "weaponPicType" | "weaponType";
+type CharacterAppearanceCategory = "일반" | "에피소드" | "아레나" | "NPC" | "몬스터" | "기계" | "기타";
 type CharacterAppearancePreset = {
+  category: CharacterAppearanceCategory;
   id: string;
-  code: number;
+  chrCode: number;
   name: string;
   values: Record<CharacterDetailKey, number>;
 };
@@ -94,6 +97,7 @@ type CharacterEditorTab = "equipment" | "abilities" | "stats" | "appearance";
 type LoadedSave = {
   save: SaveInfo;
   browserBytes?: Uint8Array | null;
+  statusMessage?: string;
 };
 type AdoptSaveOptions = {
   preserveUi?: boolean;
@@ -115,45 +119,149 @@ const characterEditorTabLabels: Record<CharacterEditorTab, string> = {
 
 const dataScopes: SaveDataScope[] = ["field", "battle"];
 const episodeKeys: EpisodeKey[] = ["episode4", "episode5"];
+const appearanceCategories: CharacterAppearanceCategory[] = ["일반", "에피소드", "아레나", "NPC", "몬스터", "기계", "기타"];
 
 const characterAppearancePresets: CharacterAppearancePreset[] = [
-  { id: "나야트레이", code: 563, name: "나야트레이", values: { face: 1288, name: 2567, job: 2568, voice: 11, body: 1277, weaponAttackType: 1, weaponType: 11, weaponPicType: 43 } },
-  { id: "네리사", code: 236, name: "네리사", values: { face: 655, name: 30, job: 1986, voice: 13, body: 899, weaponAttackType: 1, weaponType: 8, weaponPicType: 40 } },
-  { id: "데미안 (에피소드4)", code: 237, name: "데미안 (에피소드4)", values: { face: 657, name: 228, job: 1987, voice: 14, body: 256, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
-  { id: "데미안 (에피소드5)", code: 427, name: "데미안 (에피소드5)", values: { face: 657, name: 228, job: 1987, voice: 14, body: 256, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
-  { id: "디에네 (에피소드4)", code: 238, name: "디에네 (에피소드4)", values: { face: 656, name: 229, job: 1747, voice: 15, body: 567, weaponAttackType: 1, weaponType: 0, weaponPicType: 47 } },
-  { id: "디에네 (에피소드5)", code: 242, name: "디에네 (에피소드5)", values: { face: 656, name: 229, job: 1679, voice: 15, body: 1205, weaponAttackType: 1, weaponType: 0, weaponPicType: 47 } },
-  { id: "란", code: 222, name: "란", values: { face: 658, name: 437, job: 1399, voice: 30, body: 570, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
-  { id: "레드헤드", code: 38, name: "레드헤드", values: { face: 659, name: 443, job: 1681, voice: 16, body: 1096, weaponAttackType: 1, weaponType: 9, weaponPicType: 41 } },
-  { id: "루시엔", code: 240, name: "루시엔", values: { face: 789, name: 451, job: 1988, voice: 17, body: 903, weaponAttackType: 6, weaponType: 10, weaponPicType: 42 } },
-  { id: "루크랜서드 (에피소드4)", code: 246, name: "루크랜서드 (에피소드4)", values: { face: 751, name: 1692, job: 1679, voice: 18, body: 649, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
-  { id: "루크랜서드 (에피소드5)", code: 484, name: "루크랜서드 (에피소드5)", values: { face: 751, name: 1692, job: 1747, voice: 18, body: 649, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
-  { id: "리엔", code: 398, name: "리엔", values: { face: 668, name: 456, job: 1688, voice: 19, body: 1017, weaponAttackType: 1, weaponType: 17, weaponPicType: 55 } },
-  { id: "리차드", code: 241, name: "리차드", values: { face: 669, name: 459, job: 1989, voice: 20, body: 582, weaponAttackType: 6, weaponType: 13, weaponPicType: 45 } },
-  { id: "마리아", code: 243, name: "마리아", values: { face: 671, name: 458, job: 1990, voice: 21, body: 572, weaponAttackType: 1, weaponType: 11, weaponPicType: 43 } },
-  { id: "베라모드", code: 223, name: "베라모드", values: { face: 673, name: 462, job: 1399, voice: 22, body: 506, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
-  { id: "베라모드 (마에라드)", code: 223, name: "베라모드 (마에라드)", values: { face: 673, name: 462, job: 1399, voice: 35, body: 507, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
-  { id: "살라딘", code: 219, name: "살라딘", values: { face: 674, name: 463, job: 951, voice: 23, body: 347, weaponAttackType: 1, weaponType: 0, weaponPicType: 49 } },
-  { id: "살라딘 (크로슬리 커스텀)", code: 219, name: "살라딘 (크로슬리 커스텀)", values: { face: 674, name: 463, job: 951, voice: 23, body: 1185, weaponAttackType: 1, weaponType: 0, weaponPicType: 52 } },
-  { id: "살라딘 (코어 헌터)", code: 219, name: "살라딘 (코어 헌터)", values: { face: 674, name: 463, job: 951, voice: 23, body: 439, weaponAttackType: 1, weaponType: 0, weaponPicType: 50 } },
-  { id: "샤크바리", code: 245, name: "샤크바리", values: { face: 675, name: 1943, job: 1986, voice: 24, body: 202, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
-  { id: "슈", code: 36, name: "슈", values: { face: 766, name: 1898, job: 2347, voice: 5, body: 1166, weaponAttackType: 6, weaponType: 1479, weaponPicType: 53 } },
-  { id: "슈로 위장한 진", code: 36, name: "슈로 위장한 진", values: { face: 766, name: 2423, job: 1998, voice: 5, body: 1166, weaponAttackType: 1479, weaponType: 1479, weaponPicType: 0 } },
-  { id: "아셀라스", code: 56, name: "아셀라스", values: { face: 676, name: 467, job: 1995, voice: 25, body: 55, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
-  { id: "아슈레이", code: 57, name: "아슈레이", values: { face: 677, name: 468, job: 2001, voice: 34, body: 597, weaponAttackType: 1, weaponType: 0, weaponPicType: 48 } },
-  { id: "엠블라", code: 247, name: "엠블라", values: { face: 679, name: 470, job: 2251, voice: 26, body: 392, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
-  { id: "유진", code: 244, name: "유진", values: { face: 756, name: 472, job: 1991, voice: 27, body: 900, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
-  { id: "젠 (아슈레이)", code: 57, name: "젠 (아슈레이)", values: { face: 677, name: 2392, job: 1991, voice: 34, body: 597, weaponAttackType: 1, weaponType: 0, weaponPicType: 48 } },
-  { id: "죠안", code: 221, name: "죠안", values: { face: 685, name: 475, job: 951, voice: 1, body: 338, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
-  { id: "죠안 (코어 헌터)", code: 221, name: "죠안 (코어 헌터)", values: { face: 685, name: 475, job: 951, voice: 1, body: 441, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
-  { id: "진", code: 239, name: "진", values: { face: 762, name: 1899, job: 2347, voice: 5, body: 1167, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },  // 외형과 데이터가 일치하지 않음. 게임 버그로 보여 외형에 맞게 수동 변경  
-  { id: "카를로스", code: 64, name: "카를로스", values: { face: 686, name: 477, job: 2124, voice: 28, body: 641, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
-  { id: "크리스티앙", code: 220, name: "크리스티앙", values: { face: 688, name: 479, job: 1296, voice: 32, body: 323, weaponAttackType: 6, weaponType: 12, weaponPicType: 44 } },
-  { id: "하이델룬 (건 슬라이서)", code: 601, name: "하이델룬 (건 슬라이서)", values: { face: 1052, name: 2907, job: 2001, voice: 33, body: 1165, weaponAttackType: 1, weaponType: 0, weaponPicType: 49 } },
-  { id: "하이델룬 (핸드건)", code: 601, name: "하이델룬 (핸드건)", values: { face: 1052, name: 2907, job: 2001, voice: 33, body: 1165, weaponAttackType: 6, weaponType: 12, weaponPicType: 44 } },
-  { id: "아레나 흑태자", code: 598, name: "아레나 흑태자", values: { face: 229, name: 2904, job: 2894, voice: 2, body: 1481, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
-  { id: "아레나 레제드람", code: 92, name: "아레나 레제드람", values: { face: 1082, name: 449, job: 2760, voice: 2, body: 1307, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
-  { id: "현혹령", code: 197, name: "현혹령", values: { face: 229, name: 1071, job: 1295, voice: 2, body: 366, weaponAttackType: 1479, weaponType: 0, weaponPicType: 0 } },
+
+  // 0
+  { category: "일반", id: "나탈리", chrCode: 34, name: "나탈리", values: { face: 974, name: 27, job: 1995, voice: 12, body: 1218, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "일반", id: "슈로 위장한 진", chrCode: 36, name: "슈로 위장한 진", values: { face: 766, name: 2423, job: 1998, voice: 5, body: 1166, weaponAttackType: 1479, weaponType: 1479, weaponPicType: 0 } },
+  { category: "일반", id: "레드헤드", chrCode: 38, name: "레드헤드", values: { face: 659, name: 443, job: 1681, voice: 16, body: 1096, weaponAttackType: 1, weaponType: 9, weaponPicType: 41 } },
+  { category: "일반", id: "아셀라스", chrCode: 56, name: "아셀라스", values: { face: 676, name: 467, job: 1995, voice: 25, body: 55, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "일반", id: "젠 (아슈레이)", chrCode: 57, name: "젠 (아슈레이)", values: { face: 677, name: 2392, job: 1991, voice: 34, body: 597, weaponAttackType: 1, weaponType: 0, weaponPicType: 48 } },
+  { category: "일반", id: "카를로스", chrCode: 64, name: "카를로스", values: { face: 686, name: 477, job: 2124, voice: 28, body: 641, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+
+  // 100
+
+  // 200
+  { category: "일반", id: "살라딘", chrCode: 219, name: "살라딘", values: { face: 674, name: 463, job: 951, voice: 23, body: 347, weaponAttackType: 1, weaponType: 0, weaponPicType: 49 } },
+  { category: "일반", id: "크리스티앙", chrCode: 220, name: "크리스티앙", values: { face: 688, name: 479, job: 1296, voice: 32, body: 323, weaponAttackType: 6, weaponType: 12, weaponPicType: 44 } },
+  { category: "일반", id: "죠안", chrCode: 221, name: "죠안", values: { face: 685, name: 475, job: 951, voice: 1, body: 338, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { category: "일반", id: "란", chrCode: 222, name: "란", values: { face: 658, name: 437, job: 1399, voice: 30, body: 570, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { category: "일반", id: "베라모드", chrCode: 223, name: "베라모드", values: { face: 673, name: 462, job: 1399, voice: 22, body: 506, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { category: "일반", id: "네리사", chrCode: 236, name: "네리사", values: { face: 655, name: 30, job: 1986, voice: 13, body: 899, weaponAttackType: 1, weaponType: 8, weaponPicType: 40 } },
+  { category: "에피소드", id: "데미안 (EP4)", chrCode: 237, name: "데미안 (EP4)", values: { face: 657, name: 228, job: 1987, voice: 14, body: 256, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { category: "에피소드", id: "디에네 (EP4)", chrCode: 238, name: "디에네 (EP4)", values: { face: 656, name: 229, job: 1747, voice: 15, body: 567, weaponAttackType: 1, weaponType: 0, weaponPicType: 47 } },
+  { category: "일반", id: "진", chrCode: 239, name: "진", values: { face: 762, name: 1899, job: 2347, voice: 5, body: 1167, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },  // 외형과 데이터가 일치하지 않음. 게임 버그로 보여 외형에 맞게 수동 변경  
+  { category: "일반", id: "루시엔", chrCode: 240, name: "루시엔", values: { face: 789, name: 451, job: 1988, voice: 17, body: 903, weaponAttackType: 6, weaponType: 10, weaponPicType: 42 } },
+  { category: "일반", id: "리차드", chrCode: 241, name: "리차드", values: { face: 669, name: 459, job: 1989, voice: 20, body: 582, weaponAttackType: 6, weaponType: 13, weaponPicType: 45 } },
+  { category: "에피소드", id: "디에네 (EP5)", chrCode: 242, name: "디에네 (EP5)", values: { face: 656, name: 229, job: 1679, voice: 15, body: 1205, weaponAttackType: 1, weaponType: 0, weaponPicType: 47 } },
+  { category: "일반", id: "마리아", chrCode: 243, name: "마리아", values: { face: 671, name: 458, job: 1990, voice: 21, body: 572, weaponAttackType: 1, weaponType: 11, weaponPicType: 43 } },
+  { category: "일반", id: "유진", chrCode: 244, name: "유진", values: { face: 756, name: 472, job: 1991, voice: 27, body: 900, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
+  { category: "일반", id: "샤크바리", chrCode: 245, name: "샤크바리", values: { face: 675, name: 1943, job: 1986, voice: 24, body: 202, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
+  { category: "에피소드", id: "루크랜서드 (EP4)", chrCode: 246, name: "루크랜서드 (EP4)", values: { face: 751, name: 1692, job: 1679, voice: 18, body: 649, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { category: "일반", id: "엠블라", chrCode: 247, name: "엠블라", values: { face: 679, name: 470, job: 2251, voice: 26, body: 392, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+
+  // 300
+  { category: "일반", id: "리엔", chrCode: 398, name: "리엔", values: { face: 668, name: 456, job: 1688, voice: 19, body: 1017, weaponAttackType: 1, weaponType: 17, weaponPicType: 55 } },
+
+  // 400
+  { category: "에피소드", id: "데미안 (EP5)", chrCode: 427, name: "데미안 (EP5)", values: { face: 657, name: 228, job: 1987, voice: 14, body: 256, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { category: "에피소드", id: "루크랜서드 (EP5)", chrCode: 484, name: "루크랜서드 (EP5)", values: { face: 751, name: 1692, job: 1747, voice: 18, body: 649, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+
+  // 500
+  { category: "일반", id: "나야트레이", chrCode: 563, name: "나야트레이", values: { face: 1288, name: 2567, job: 2568, voice: 11, body: 1277, weaponAttackType: 1, weaponType: 11, weaponPicType: 43 } },
+
+  // 아레나
+  { category: "아레나", id: "아레나 흑태자", chrCode: 598, name: "아레나 흑태자", values: { face: 229, name: 2904, job: 2894, voice: 2, body: 1481, weaponAttackType: 1, weaponType: 15, weaponPicType: 57 } },
+  { category: "아레나", id: "아레나 레제드람", chrCode: 92, name: "아레나 레제드람", values: { face: 1082, name: 449, job: 2760, voice: 2, body: 1307, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { category: "아레나", id: "아레나 레빈(더미)", chrCode: 39, name: "아레나 레빈(더미)", values: { face: 229, name: 447, job: 0, voice: 0, body: 55, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 샤크바리", chrCode: 71, name: "아레나 샤크바리", values: { face: 446, name: 1943, job: 2744, voice: 24, body: 202, weaponAttackType: 1, weaponType: 15, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 살라딘", chrCode: 75, name: "아레나 살라딘", values: { face: 387, name: 463, job: 2742, voice: 23, body: 347, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 데미안", chrCode: 76, name: "아레나 데미안", values: { face: 657, name: 228, job: 2743, voice: 14, body: 256, weaponAttackType: 1, weaponType: 14, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 아슈레이", chrCode: 77, name: "아레나 아슈레이", values: { face: 677, name: 468, job: 2778, voice: 0, body: 597, weaponAttackType: 1, weaponType: 15, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 죠안", chrCode: 78, name: "아레나 죠안", values: { face: 377, name: 475, job: 2764, voice: 1, body: 338, weaponAttackType: 1, weaponType: 14, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 크리스티앙", chrCode: 79, name: "아레나 크리스티앙", values: { face: 342, name: 479, job: 2754, voice: 32, body: 323, weaponAttackType: 6, weaponType: 12, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 엠블라", chrCode: 80, name: "아레나 엠블라", values: { face: 448, name: 470, job: 2771, voice: 26, body: 392, weaponAttackType: 1479, weaponType: 1, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 레오파드", chrCode: 82, name: "아레나 레오파드", values: { face: 1108, name: 448, job: 2779, voice: 6, body: 1266, weaponAttackType: 1, weaponType: 14, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 마리아", chrCode: 83, name: "아레나 마리아", values: { face: 671, name: 458, job: 2780, voice: 21, body: 572, weaponAttackType: 1, weaponType: 11, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 바룬", chrCode: 84, name: "아레나 바룬", values: { face: 672, name: 460, job: 2746, voice: 2, body: 1310, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 손나딘", chrCode: 85, name: "아레나 손나딘", values: { face: 781, name: 464, job: 2756, voice: 0, body: 1259, weaponAttackType: 1479, weaponType: 1, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 유진", chrCode: 86, name: "아레나 유진", values: { face: 756, name: 472, job: 2747, voice: 0, body: 900, weaponAttackType: 1, weaponType: 15, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 디에네", chrCode: 87, name: "아레나 디에네", values: { face: 656, name: 229, job: 2758, voice: 5, body: 567, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 리차드", chrCode: 88, name: "아레나 리차드", values: { face: 669, name: 459, job: 2750, voice: 4, body: 582, weaponAttackType: 6, weaponType: 13, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 루크랜서드", chrCode: 89, name: "아레나 루크랜서드", values: { face: 751, name: 1692, job: 2759, voice: 18, body: 649, weaponAttackType: 1479, weaponType: 1, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 제이슨", chrCode: 90, name: "아레나 제이슨", values: { face: 433, name: 474, job: 2767, voice: 2, body: 368, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 칼리오페", chrCode: 91, name: "아레나 칼리오페", values: { face: 1099, name: 478, job: 2751, voice: 2, body: 540, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 루칼드", chrCode: 93, name: "아레나 루칼드", values: { face: 1082, name: 452, job: 2761, voice: 2, body: 1308, weaponAttackType: 1479, weaponType: 1, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 아만딘", chrCode: 94, name: "아레나 아만딘", values: { face: 759, name: 466, job: 2775, voice: 5, body: 1007, weaponAttackType: 1479, weaponType: 1, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 로브", chrCode: 95, name: "아레나 로브", values: { face: 1081, name: 450, job: 2769, voice: 0, body: 1309, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 란", chrCode: 99, name: "아레나 란", values: { face: 658, name: 437, job: 2745, voice: 30, body: 570, weaponAttackType: 1, weaponType: 14, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 루시엔", chrCode: 100, name: "아레나 루시엔", values: { face: 789, name: 451, job: 2757, voice: 17, body: 903, weaponAttackType: 6, weaponType: 10, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 네리사", chrCode: 101, name: "아레나 네리사", values: { face: 655, name: 30, job: 2781, voice: 13, body: 899, weaponAttackType: 1, weaponType: 8, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 레드헤드", chrCode: 102, name: "아레나 레드헤드", values: { face: 659, name: 443, job: 2772, voice: 16, body: 1096, weaponAttackType: 1, weaponType: 9, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 아셀라스", chrCode: 104, name: "아레나 아셀라스", values: { face: 445, name: 467, job: 2749, voice: 25, body: 55, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 리엔", chrCode: 107, name: "아레나 리엔", values: { face: 668, name: 456, job: 2768, voice: 19, body: 1017, weaponAttackType: 1, weaponType: 17, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 나탈리", chrCode: 109, name: "아레나 나탈리", values: { face: 974, name: 27, job: 2776, voice: 12, body: 1218, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 테오렐", chrCode: 110, name: "아레나 테오렐", values: { face: 1110, name: 480, job: 2762, voice: 2, body: 1306, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 베라모드", chrCode: 365, name: "아레나 베라모드", values: { face: 673, name: 462, job: 2765, voice: 22, body: 506, weaponAttackType: 1479, weaponType: 1, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 슈", chrCode: 594, name: "아레나 슈", values: { face: 766, name: 1898, job: 2841, voice: 6, body: 1166, weaponAttackType: 1479, weaponType: 1, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 마에라드", chrCode: 599, name: "아레나 마에라드", values: { face: 673, name: 2280, job: 1399, voice: 35, body: 507, weaponAttackType: 1, weaponType: 1, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 블랙레이븐", chrCode: 600, name: "아레나 블랙레이븐", values: { face: 674, name: 2289, job: 2896, voice: 23, body: 1185, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 팬텀 데미안", chrCode: 602, name: "아레나 팬텀 데미안", values: { face: 1048, name: 2909, job: 2898, voice: 2, body: 1273, weaponAttackType: 1, weaponType: 15, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 팬텀 마리아", chrCode: 603, name: "아레나 팬텀 마리아", values: { face: 1287, name: 2910, job: 2899, voice: 21, body: 1278, weaponAttackType: 1, weaponType: 14, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 팬텀 유진", chrCode: 604, name: "아레나 팬텀 유진", values: { face: 1047, name: 2908, job: 2900, voice: 27, body: 1274, weaponAttackType: 1, weaponType: 15, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 카를로스", chrCode: 605, name: "아레나 카를로스", values: { face: 686, name: 477, job: 2901, voice: 28, body: 641, weaponAttackType: 1, weaponType: 14, weaponPicType: 0 } },
+  { category: "아레나", id: "아레나 슬라임 3형제", chrCode: 606, name: "아레나 슬라임 3형제", values: { face: 229, name: 2323, job: 1672, voice: 0, body: 566, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+
+  // 커스텀
+  { category: "기타", id: "슈", chrCode: 36, name: "슈", values: { face: 766, name: 1898, job: 2347, voice: 5, body: 1166, weaponAttackType: 6, weaponType: 1479, weaponPicType: 53 } },
+  { category: "기타", id: "아슈레이", chrCode: 57, name: "아슈레이", values: { face: 677, name: 468, job: 2001, voice: 34, body: 597, weaponAttackType: 1, weaponType: 0, weaponPicType: 48 } },
+  { category: "기타", id: "살라딘 (크로슬리 커스텀)", chrCode: 219, name: "살라딘 (크로슬리 커스텀)", values: { face: 674, name: 463, job: 951, voice: 23, body: 1185, weaponAttackType: 1, weaponType: 0, weaponPicType: 52 } },
+  { category: "기타", id: "살라딘 (코어 헌터)", chrCode: 219, name: "살라딘 (코어 헌터)", values: { face: 674, name: 463, job: 951, voice: 23, body: 439, weaponAttackType: 1, weaponType: 0, weaponPicType: 50 } },
+  { category: "기타", id: "죠안 (코어 헌터)", chrCode: 221, name: "죠안 (코어 헌터)", values: { face: 685, name: 475, job: 951, voice: 1, body: 441, weaponAttackType: 1, weaponType: 14, weaponPicType: 56 } },
+  { category: "기타", id: "베라모드 (마에라드)", chrCode: 223, name: "베라모드 (마에라드)", values: { face: 673, name: 462, job: 1399, voice: 35, body: 507, weaponAttackType: 1479, weaponType: 1, weaponPicType: 53 } },
+  { category: "기타", id: "하이델룬 (건 슬라이서)", chrCode: 601, name: "하이델룬 (건 슬라이서)", values: { face: 1052, name: 2907, job: 2001, voice: 33, body: 1165, weaponAttackType: 1, weaponType: 0, weaponPicType: 49 } },
+  { category: "기타", id: "하이델룬 (핸드건)", chrCode: 601, name: "하이델룬 (핸드건)", values: { face: 1052, name: 2907, job: 2001, voice: 33, body: 1165, weaponAttackType: 6, weaponType: 12, weaponPicType: 44 } },
+  { category: "기타", id: "이반", chrCode: 179, name: "이반", values: { face: 574, name: 1574, job: 1297, voice: 4, body: 536, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+
+  // 몬스터
+  { category: "몬스터", id: "현혹령", chrCode: 197, name: "현혹령", values: { face: 229, name: 1071, job: 1291, voice: 36, body: 366, weaponAttackType: 1479, weaponType: 0, weaponPicType: 0 } },
+  { category: "몬스터", id: "우주슬라임", chrCode: 363, name: "우주슬라임", values: { face: 229, name: 2005, job: 1672, voice: 0, body: 563, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+
+  { category: "몬스터", id: "가이아리더", chrCode: 193, name: "가이아리더", values: { face: 229, name: 955, job: 1219, voice: 0, body: 367, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "몬스터", id: "가이아버그", chrCode: 596, name: "가이아버그", values: { face: 229, name: 946, job: 1219, voice: 0, body: 365, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+
+  // NPC
+  { category: "NPC", id: "코어헌터 (주황)", chrCode: 11, name: "코어헌터 (주황)", values: { face: 1080, name: 637, job: 951, voice: 2, body: 18, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "길드원 1", chrCode: 12, name: "길드원 1", values: { face: 1080, name: 2316, job: 2246, voice: 2, body: 238, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "길드원 2", chrCode: 13, name: "길드원 2", values: { face: 1080, name: 2316, job: 2246, voice: 2, body: 240, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "길드원 6", chrCode: 14, name: "길드원 6", values: { face: 1080, name: 2316, job: 2246, voice: 2, body: 723, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "길드원 3", chrCode: 15, name: "길드원 3", values: { face: 1080, name: 2316, job: 2246, voice: 2, body: 241, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "길드원 4", chrCode: 16, name: "길드원 4", values: { face: 1080, name: 2316, job: 2246, voice: 2, body: 242, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "길드원 5", chrCode: 17, name: "길드원 5", values: { face: 1080, name: 2316, job: 2246, voice: 2, body: 243, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  
+  { category: "NPC", id: "구룡방원 1", chrCode: 435, name: "구룡방원 1", values: { face: 229, name: 2123, job: 2124, voice: 2, body: 1148, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "구룡방원 2", chrCode: 436, name: "구룡방원 2", values: { face: 229, name: 2123, job: 2124, voice: 2, body: 1147, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "구룡방원 3", chrCode: 437, name: "구룡방원 3", values: { face: 229, name: 2123, job: 2124, voice: 4, body: 1144, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+
+  { category: "NPC", id: "강화병 1", chrCode: 357, name: "강화병 1", values: { face: 1085, name: 1627, job: 2259, voice: 2, body: 1126, weaponAttackType: 6, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "강화병 2", chrCode: 358, name: "강화병 2", values: { face: 1085, name: 1628, job: 2259, voice: 2, body: 1130, weaponAttackType: 6, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "강화병 3", chrCode: 359, name: "강화병 3", values: { face: 1085, name: 1629, job: 2259, voice: 2, body: 1131, weaponAttackType: 6, weaponType: 0, weaponPicType: 0 } },
+
+  { category: "NPC", id: "강화아델룬 1", chrCode: 505, name: "강화아델룬 1", values: { face: 229, name: 2329, job: 0, voice: 0, body: 707, weaponAttackType: 65535, weaponType: 255, weaponPicType: 0 } },
+  { category: "NPC", id: "강화아델룬 2", chrCode: 506, name: "강화아델룬 2", values: { face: 1094, name: 2331, job: 1747, voice: 0, body: 341, weaponAttackType: 387, weaponType: 0, weaponPicType: 208 } },
+  { category: "NPC", id: "강화아델룬 3", chrCode: 507, name: "강화아델룬 3", values: { face: 1085, name: 2322, job: 2259, voice: 2, body: 1132, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "강화아델룬 8", chrCode: 507, name: "강화아델룬 8", values: { face: 1085, name: 2322, job: 2259, voice: 2, body: 1132, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "강화아델룬 4", chrCode: 508, name: "강화아델룬 4", values: { face: 1085, name: 2322, job: 2259, voice: 3, body: 1125, weaponAttackType: 1584, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "강화아델룬 5", chrCode: 509, name: "강화아델룬 5", values: { face: 1085, name: 2322, job: 2259, voice: 3, body: 1127, weaponAttackType: 1584, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "강화아델룬 6", chrCode: 510, name: "강화아델룬 6", values: { face: 1085, name: 2322, job: 2259, voice: 2, body: 1128, weaponAttackType: 1584, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "강화아델룬 7", chrCode: 511, name: "강화아델룬 7", values: { face: 1085, name: 2322, job: 2259, voice: 2, body: 1129, weaponAttackType: 1584, weaponType: 0, weaponPicType: 0 } },
+
+  { category: "NPC", id: "과학자 1", chrCode: 256, name: "과학자 1", values: { face: 1078, name: 643, job: 2251, voice: 2, body: 1010, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "과학자 2", chrCode: 257, name: "과학자 2", values: { face: 1078, name: 643, job: 2251, voice: 0, body: 1012, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "과학자 3", chrCode: 342, name: "과학자 3", values: { face: 1078, name: 643, job: 2251, voice: 0, body: 1011, weaponAttackType: 6, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "과학자 4", chrCode: 488, name: "과학자 4", values: { face: 1078, name: 2319, job: 2251, voice: 2, body: 1013, weaponAttackType: 6, weaponType: 0, weaponPicType: 0 } },
+
+  { category: "NPC", id: "광신도", chrCode: 250, name: "광신도 1", values: { face: 1089, name: 1583, job: 2250, voice: 5, body: 1229, weaponAttackType: 1479, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "광신도 2", chrCode: 252, name: "광신도 2", values: { face: 1085, name: 1583, job: 2250, voice: 3, body: 1231, weaponAttackType: 1479, weaponType: 0, weaponPicType: 0 } },
+
+  { category: "NPC", id: "루나스 권법가", chrCode: 387, name: "루나스 권법가", values: { face: 1092, name: 640, job: 1990, voice: 5, body: 1153, weaponAttackType: 1, weaponType: 0, weaponPicType: 0 } },
+  { category: "NPC", id: "루나스", chrCode: 513, name: "루나스", values: { face: 1092, name: 640, job: 1990, voice: 5, body: 1155, weaponAttackType: 1479, weaponType: 0, weaponPicType: 0 } },
+
+  // 기계
+  { category: "기계", id: "세큐리티 볼 1", chrCode: 18, name: "세큐리티 볼 1", values: { face: 229, name: 1630, job: 1673, voice: 0, body: 117, weaponAttackType: 6, weaponType: 0, weaponPicType: 0 } },
+  { category: "기계", id: "스파이더", chrCode: 19, name: "스파이더", values: { face: 1085, name: 661, job: 1674, voice: 0, body: 162, weaponAttackType: 6, weaponType: 0, weaponPicType: 0 } },
 ];
 
 const emptySaveStatus = "G3P_II*.sav 파일을 열거나 여기로 드래그하세요.";
@@ -245,8 +353,9 @@ export default function App() {
     try {
       const loadedSave = await loader();
       if (loadedSave) {
-        adoptSave(loadedSave.save, loadedSave.browserBytes ?? null);
-        setStatus(`${loadedSave.save.fileName} 파일을 열었습니다.`);
+        const preparedSave = await confirmAndRepairAbilityEncoding(loadedSave);
+        adoptSave(preparedSave.save, preparedSave.browserBytes ?? null);
+        setStatus(preparedSave.statusMessage ?? `${preparedSave.save.fileName} 파일을 열었습니다.`);
       } else {
         setStatus(save ? cancelMessage : emptySaveStatus);
       }
@@ -256,6 +365,60 @@ export default function App() {
       setBusy(false);
       setDragging(false);
     }
+  }
+
+  async function confirmAndRepairAbilityEncoding(loadedSave: LoadedSave): Promise<LoadedSave> {
+    const repair = loadedSave.save.abilityEncodingRepair;
+    if (!repair.needed) {
+      return loadedSave;
+    }
+
+    const lastAbilityText = repair.lastAbilityNames.at(-1) ?? `코드 ${repair.maxCode}`;
+    const approved = window.confirm(
+      [
+        "v1.0.2 어빌리티 저장 오류로 보이는 Lv0 데이터가 발견되었습니다.",
+        "",
+        `보정 대상 슬롯: 총 ${repair.total.toLocaleString()}개`,
+        `일반 데이터: ${repair.fieldRecords.toLocaleString()}명 / ${repair.field.toLocaleString()}개 슬롯`,
+        `전투 데이터: ${repair.battleRecords.toLocaleString()}명 / ${repair.battle.toLocaleString()}개 슬롯`,
+        `보정 범위: ${lastAbilityText}까지`,
+        "",
+        "확인을 누르면 기존 세이브를 백업한 뒤 해당 Lv0 데이터를 미습득 값으로 보정합니다."
+      ].join("\n")
+    );
+
+    if (!approved) {
+      return {
+        ...loadedSave,
+        statusMessage: `${loadedSave.save.fileName} 파일을 열었습니다. 어빌리티 Lv0 데이터 보정은 건너뛰었습니다.`
+      };
+    }
+
+    const api = window.g3p2SaveEditor;
+    if (api) {
+      const result = await api.repairAbilityEncoding(loadedSave.save.filePath);
+      const backupText = result.backupPath ? ` 백업: ${result.backupPath}` : "";
+      return {
+        save: result.save,
+        browserBytes: null,
+        statusMessage: `어빌리티 Lv0 데이터 ${result.repair.total.toLocaleString()}개를 보정했습니다.${backupText}`
+      };
+    }
+
+    if (loadedSave.browserBytes) {
+      const repairedBytes = new Uint8Array(loadedSave.browserBytes);
+      const result = repairAbilityEncodingIssue(repairedBytes);
+      return {
+        save: parseSave(repairedBytes, loadedSave.save.filePath),
+        browserBytes: repairedBytes,
+        statusMessage: `어빌리티 Lv0 데이터 ${result.total.toLocaleString()}개를 보정했습니다. 저장하려면 다운로드를 진행하세요.`
+      };
+    }
+
+    return {
+      ...loadedSave,
+      statusMessage: "원본 세이브 데이터가 없어 어빌리티 Lv0 데이터 보정을 건너뛰었습니다."
+    };
   }
 
   function adoptSave(nextSave: SaveInfo, nextBrowserBytes: Uint8Array | null = null, options: AdoptSaveOptions = {}) {
@@ -1402,7 +1565,7 @@ function PartyEditor({
                 >
                   <FaceIcon faceCode={faceCodes.get(code)} />
                   <span className="member-details">
-                    <span className="member-name">{CHARACTER_NAMES.get(code) ?? `알 수 없음 (${code})`}</span>
+                    <span className="member-name">{CHR_CODE_NAMES.get(code) ?? `알 수 없음 (${code})`}</span>
                     <small className="member-code">code {code}</small>
                   </span>
                   {readOnly ? null : (
@@ -1447,7 +1610,7 @@ function PartyPicker({
   const [manualCode, setManualCode] = useState("");
   const [activeGroup, setActiveGroup] = useState<CharacterGroup | "all" | "manual">("all");
   const normalizedQuery = query.trim().toLowerCase();
-  const characters = CHARACTER_OPTIONS.filter((character) => {
+  const characters = CHR_CODE_OPTIONS.filter((character) => {
     if (activeGroup === "manual") {
       return false;
     }
@@ -2475,10 +2638,10 @@ function AppearancePresetPicker({
   onSelect: (preset: CharacterAppearancePreset) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [activeGroup, setActiveGroup] = useState<CharacterGroup | "all">("all");
+  const [activeGroup, setActiveGroup] = useState<CharacterAppearanceCategory | "all">("all");
   const normalizedQuery = query.trim().toLowerCase();
   const presets = characterAppearancePresets.filter((preset) => {
-    const group = getCharacterGroup(preset.name);
+    const group = preset.category;
     if (activeGroup !== "all" && group !== activeGroup) {
       return false;
     }
@@ -2488,14 +2651,14 @@ function AppearancePresetPicker({
     return (
       formatCharacterDisplayName(preset.name).toLowerCase().includes(normalizedQuery) ||
       formatCharacterDisplayName(preset.id).toLowerCase().includes(normalizedQuery) ||
-      String(preset.code).includes(normalizedQuery)
+      String(preset.chrCode).includes(normalizedQuery)
     );
   }).sort((a, b) => {
-    const groupCompare = getCharacterGroupRank(a.name) - getCharacterGroupRank(b.name);
+    const groupCompare = getAppearanceCategoryRank(a.category) - getAppearanceCategoryRank(b.category);
     if (groupCompare !== 0) {
       return groupCompare;
     }
-    return formatCharacterDisplayName(a.name).localeCompare(formatCharacterDisplayName(b.name), "ko-KR") || a.code - b.code;
+    return formatCharacterDisplayName(a.name).localeCompare(formatCharacterDisplayName(b.name), "ko-KR") || a.chrCode - b.chrCode;
   });
 
   return (
@@ -2525,14 +2688,14 @@ function AppearancePresetPicker({
             >
               전체
             </button>
-            {(["normal", "episode", "arena"] as CharacterGroup[]).map((group) => (
+            {appearanceCategories.map((group) => (
               <button
                 key={group}
                 type="button"
                 className={activeGroup === group ? "picker-tab active" : "picker-tab"}
                 onClick={() => setActiveGroup(group)}
               >
-                {getCharacterGroupFilterLabel(group)}
+                {getAppearanceCategoryFilterLabel(group)}
               </button>
             ))}
           </aside>
@@ -2546,23 +2709,27 @@ function AppearancePresetPicker({
             />
             <div className="item-picker-list">
               {presets.map((preset, index) => {
-                const group = getCharacterGroup(preset.name);
-                const previousGroup = index > 0 ? getCharacterGroup(presets[index - 1].name) : null;
+                const group = preset.category;
+                const previousGroup = index > 0 ? presets[index - 1].category : null;
                 const showGroupDivider = group !== previousGroup;
 
                 return (
-                  <React.Fragment key={preset.id}>
+                  <React.Fragment key={`${preset.chrCode}-${preset.id}`}>
                     {showGroupDivider ? (
                       <div className="character-divider-row">
-                        <span>{getCharacterGroupLabel(group)}</span>
+                        <span>{getAppearanceCategoryLabel(group)}</span>
                       </div>
                     ) : null}
                     <button
                       type="button"
-                      className={`item-picker-row appearance-preset-row ${group}-character`}
+                      className={`item-picker-row appearance-preset-row ${getAppearanceCategoryClassName(group)}`}
                       onClick={() => onSelect(preset)}
                     >
-                      <span>{formatCharacterDisplayName(preset.name)}</span>
+                      <FaceIcon faceCode={preset.values.face} />
+                      <span className="appearance-preset-main">
+                        <span className="appearance-preset-name">{formatCharacterDisplayName(preset.name)}</span>
+                        <small className="appearance-preset-code">code {preset.chrCode}</small>
+                      </span>
                     </button>
                   </React.Fragment>
                 );
@@ -3247,7 +3414,7 @@ function getMercenaryName(value: number): string {
 }
 
 function buildUnsupportedEquipment(characterCode: number, scope: EquipmentScope): CharacterEquipmentInfo {
-  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const characterName = CHR_CODE_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   return {
     characterCode,
     characterName,
@@ -3261,7 +3428,7 @@ function buildUnsupportedEquipment(characterCode: number, scope: EquipmentScope)
 }
 
 function buildUnsupportedMercenary(characterCode: number, scope: EquipmentScope): CharacterMercenaryInfo {
-  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const characterName = CHR_CODE_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   return {
     characterCode,
     characterName,
@@ -3275,7 +3442,7 @@ function buildUnsupportedMercenary(characterCode: number, scope: EquipmentScope)
 }
 
 function buildUnsupportedStats(characterCode: number, scope: EquipmentScope): CharacterStatsInfo {
-  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const characterName = CHR_CODE_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   return {
     characterCode,
     characterName,
@@ -3290,7 +3457,7 @@ function buildUnsupportedStats(characterCode: number, scope: EquipmentScope): Ch
 }
 
 function buildUnsupportedAbilities(characterCode: number, scope: EquipmentScope): CharacterAbilitiesInfo {
-  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const characterName = CHR_CODE_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   return {
     characterCode,
     characterName,
@@ -3731,6 +3898,41 @@ function getCharacterGroupFilterLabel(group: CharacterGroup): string {
   return "일반";
 }
 
+function getAppearanceCategoryRank(category: CharacterAppearanceCategory): number {
+  const index = appearanceCategories.indexOf(category);
+  return index === -1 ? appearanceCategories.length : index;
+}
+
+function getAppearanceCategoryLabel(category: CharacterAppearanceCategory): string {
+  if (category === "일반" || category === "에피소드" || category === "아레나") {
+    return `${category} 캐릭터`;
+  }
+  return category;
+}
+
+function getAppearanceCategoryFilterLabel(category: CharacterAppearanceCategory): string {
+  return category;
+}
+
+function getAppearanceCategoryClassName(category: CharacterAppearanceCategory): string {
+  switch (category) {
+    case "에피소드":
+      return "episode-character";
+    case "아레나":
+      return "arena-character";
+    case "NPC":
+      return "npc-character";
+    case "몬스터":
+      return "monster-character";
+    case "기계":
+      return "machine-character";
+    case "기타":
+      return "other-character";
+    default:
+      return "normal-character";
+  }
+}
+
 function formatCharacterDisplayName(name: string): string {
   return name
     .replaceAll(" (에피소드4)", " (EP4)")
@@ -3923,3 +4125,4 @@ function downloadSaveFile(data: Uint8Array, fileName: string): void {
   anchor.remove();
   URL.revokeObjectURL(url);
 }
+

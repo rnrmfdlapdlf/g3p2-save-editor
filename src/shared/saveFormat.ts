@@ -226,6 +226,17 @@ export type CharacterAbilitiesInfo = {
 export type SaveTypeLabel = "연대표" | "챕터" | "전투" | "알 수 없음";
 export type SaveEpisodeLabel = "미선택" | "에피소드4" | "에피소드5";
 
+export type AbilityEncodingRepairInfo = {
+  needed: boolean;
+  total: number;
+  field: number;
+  battle: number;
+  fieldRecords: number;
+  battleRecords: number;
+  maxCode: number;
+  lastAbilityNames: string[];
+};
+
 export type SaveInfo = {
   filePath: string;
   fileName: string;
@@ -255,6 +266,7 @@ export type SaveInfo = {
   mercenaries: Record<EquipmentScope, CharacterMercenaryInfo[]>;
   stats: Record<EquipmentScope, CharacterStatsInfo[]>;
   abilities: Record<EquipmentScope, CharacterAbilitiesInfo[]>;
+  abilityEncodingRepair: AbilityEncodingRepairInfo;
 };
 
 export type CharacterEquipmentEdit = {
@@ -412,7 +424,7 @@ export const PARTY_OFFSETS: Record<EpisodeKey, { label: string; offset: number }
 };
 export const PARTY_MEMBER_LIMIT = 55;
 
-export const CHARACTER_NAMES = new Map<number, string>([
+export const CHR_CODE_NAMES = new Map<number, string>([
   [36, "슈로 위장한 진"],
   [38, "레드헤드"],
   [39, "아레나 레빈(더미)"],
@@ -433,7 +445,7 @@ export const CHARACTER_NAMES = new Map<number, string>([
   [86, "아레나 유진"],
   [87, "아레나 디에네"],
   [88, "아레나 리차드"],
-  [89, "아레나 에제키엘"],
+  [89, "아레나 루크랜서드"],
   [90, "아레나 제이슨"],
   [91, "아레나 칼리오페"],
   [92, "아레나 레제드람"],
@@ -454,21 +466,21 @@ export const CHARACTER_NAMES = new Map<number, string>([
   [222, "란"],
   [223, "베라모드"],
   [236, "네리사"],
-  [237, "데미안 (에피소드4)"],
-  [238, "디에네 (에피소드4)"],
+  [237, "데미안 (EP4)"],
+  [238, "디에네 (EP4)"],
   [239, "진"],
   [240, "루시엔"],
   [241, "리차드"],
-  [242, "디에네 (에피소드5)"],
+  [242, "디에네 (EP5)"],
   [243, "마리아"],
   [244, "유진"],
   [245, "샤크바리"],
-  [246, "루크랜서드 (에피소드4)"],
+  [246, "루크랜서드 (EP4)"],
   [247, "엠블라"],
   [365, "아레나 베라모드"],
   [398, "리엔"],
-  [427, "데미안 (에피소드5)"],
-  [484, "루크랜서드 (에피소드5)"],
+  [427, "데미안 (EP5)"],
+  [484, "루크랜서드 (EP5)"],
   [563, "나야트레이"],
   [594, "아레나 슈"],
   [598, "아레나 흑태자"],
@@ -482,7 +494,7 @@ export const CHARACTER_NAMES = new Map<number, string>([
   [606, "아레나 슬라임 3형제"]
 ]);
 
-export const CHARACTER_OPTIONS = Array.from(CHARACTER_NAMES, ([code, name]) => ({ code, name })).sort(
+export const CHR_CODE_OPTIONS = Array.from(CHR_CODE_NAMES, ([code, name]) => ({ code, name })).sort(
   (a, b) => a.code - b.code
 );
 
@@ -807,12 +819,14 @@ export const CHARACTER_BODY_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 323, name: "크리스티앙" },
   { code: 338, name: "죠안" },
   { code: 347, name: "살라딘" },
+  { code: 366, name: "현혹령" },
   { code: 368, name: "제이슨" },
   { code: 392, name: "엠블라" },
   { code: 439, name: "살라딘 (코어 헌터)" },
   { code: 441, name: "죠안 (코어 헌터)" },
   { code: 506, name: "베라모드" },
   { code: 507, name: "베라모드 (마에라드)" },
+  { code: 536, name: "이반" },
   { code: 540, name: "칼리오페" },
   { code: 567, name: "디에네 (에피소드4)" },
   { code: 570, name: "란" },
@@ -834,6 +848,7 @@ export const CHARACTER_BODY_OPTIONS: Array<{ code: number; name: string }> = [
   { code: 1205, name: "디에네 (에피소드5)" },
   { code: 1218, name: "나탈리" },
   { code: 1259, name: "손나딘" },
+  { code: 1266, name: "준 레오파드" },
   { code: 1277, name: "나야트레이" },
   { code: 1278, name: "유블레인" },
   { code: 1306, name: "테오렐" },
@@ -1137,6 +1152,7 @@ const WEAPON_TYPE_RELATIVE_OFFSET_FROM_EQUIPMENT = -0x02;
 const BATTLE_MERCENARY_RELATIVE_OFFSET_FROM_CHARACTER = 0x18;
 const BATTLE_UNIT_SCAN_START_OFFSET = 0xe000;
 const CHARACTER_ABILITY_RELATIVE_OFFSET = 0x77;
+const ABILITY_ENCODING_REPAIR_MAX_CODE = 192;
 const CHARACTER_STAT_DEFINITIONS: Array<{
   key: CharacterStatKey;
   label: string;
@@ -1311,7 +1327,7 @@ export const ABILITY_OPTIONS: AbilityOption[] = [
   { code: 168, name: "데스 포토그래프", character: "루시엔", maxLevel: 1, category: "special" },
   { code: 169, name: "폭풍검", character: "샤크바리", maxLevel: 1, category: "special" },
   { code: 170, name: "이데아 캐논", character: "살라딘", maxLevel: 1, category: "special" },
-  { code: 171, name: "헬레이져", category: "normal" },
+  { code: 171, name: "헬 레이저", category: "normal" },
   { code: 172, name: "아이템_테스트", category: "dummy" },
   { code: 173, name: "영혼의집중", character: "살라딘", maxLevel: 3, category: "specialUnlock" },
   { code: 174, name: "소울스트림", character: "샤크바리", maxLevel: 3, category: "specialUnlock" },
@@ -1424,7 +1440,8 @@ export function parseSave(data: Uint8Array, filePath: string): SaveInfo {
     abilities: {
       field: readCharacterAbilitiesList(data, "field"),
       battle: readCharacterAbilitiesList(data, "battle")
-    }
+    },
+    abilityEncodingRepair: inspectAbilityEncodingIssue(data)
   };
 }
 
@@ -1475,6 +1492,79 @@ export function calculateChecksum(data: Uint8Array): number {
     checksum += data[index] * CHECKSUM_WEIGHTS[index % CHECKSUM_WEIGHTS.length];
   }
   return checksum % 0x7d00;
+}
+
+export function inspectAbilityEncodingIssue(data: Uint8Array): AbilityEncodingRepairInfo {
+  return collectAbilityEncodingRepairInfo(data, false);
+}
+
+export function repairAbilityEncodingIssue(data: Uint8Array): AbilityEncodingRepairInfo {
+  const result = collectAbilityEncodingRepairInfo(data, true);
+  if (result.total > 0) {
+    writeUint16(data, data.length - 2, calculateChecksum(data));
+  }
+  return result;
+}
+
+function collectAbilityEncodingRepairInfo(data: Uint8Array, applyRepair: boolean): AbilityEncodingRepairInfo {
+  const field = countAbilityEncodingRepairBytes(data, "field", applyRepair);
+  const battle = countAbilityEncodingRepairBytes(data, "battle", applyRepair);
+  const lastAbilityNames = ABILITY_OPTIONS.filter((ability) => ability.code <= ABILITY_ENCODING_REPAIR_MAX_CODE)
+    .slice(-2)
+    .map((ability) => ability.name);
+  const total = field.count + battle.count;
+  return {
+    needed: total > 0,
+    total,
+    field: field.count,
+    battle: battle.count,
+    fieldRecords: field.records,
+    battleRecords: battle.records,
+    maxCode: ABILITY_ENCODING_REPAIR_MAX_CODE,
+    lastAbilityNames
+  };
+}
+
+function countAbilityEncodingRepairBytes(
+  data: Uint8Array,
+  scope: EquipmentScope,
+  applyRepair: boolean
+): { count: number; records: number } {
+  const characterCodes = scope === "field" ? readFieldCharacterCodes(data) : readBattleCharacterCodes(data);
+  let count = 0;
+  let records = 0;
+
+  for (const characterCode of characterCodes) {
+    const baseOffset = getCharacterDataBaseOffset(data, characterCode, scope);
+    if (baseOffset === null) {
+      continue;
+    }
+
+    let recordCount = 0;
+    const abilityBaseOffset = baseOffset + CHARACTER_ABILITY_RELATIVE_OFFSET;
+    for (const ability of ABILITY_OPTIONS) {
+      if (ability.code > ABILITY_ENCODING_REPAIR_MAX_CODE) {
+        continue;
+      }
+
+      const offset = abilityBaseOffset + ability.code;
+      if (offset >= data.length || data[offset] !== 0xff) {
+        continue;
+      }
+
+      count += 1;
+      recordCount += 1;
+      if (applyRepair) {
+        data[offset] = 0x00;
+      }
+    }
+
+    if (recordCount > 0) {
+      records += 1;
+    }
+  }
+
+  return { count, records };
 }
 
 function readPlayTime(data: Uint8Array): SaveInfo["playTime"] {
@@ -2018,7 +2108,7 @@ function readParty(data: Uint8Array, episode: EpisodeKey): PartyInfo {
       code,
       offset,
       raw: readRawHex(data, offset, 4),
-      name: CHARACTER_NAMES.get(code) ?? `알 수 없음 (${code})`
+      name: CHR_CODE_NAMES.get(code) ?? `알 수 없음 (${code})`
     });
   }
 
@@ -2045,7 +2135,7 @@ function readEquipment(data: Uint8Array, scope: EquipmentScope): CharacterEquipm
 }
 
 function readCharacterEquipment(data: Uint8Array, characterCode: number, scope: EquipmentScope): CharacterEquipmentInfo {
-  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const characterName = CHR_CODE_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   const baseOffset = getEquipmentBaseOffset(data, characterCode, scope);
 
   if (baseOffset === null) {
@@ -2219,7 +2309,7 @@ function readBattleCharacterCodes(data: Uint8Array): number[] {
   const startOffset = Math.min(BATTLE_UNIT_SCAN_START_OFFSET, data.length);
   for (let offset = startOffset; offset + EQUIPMENT_RELATIVE_OFFSET_FROM_CHARACTER + 12 <= data.length; offset += 1) {
     const characterCode = readInverseUint16(data, offset);
-    if (!CHARACTER_NAMES.has(characterCode) || seen.has(characterCode)) {
+    if (!CHR_CODE_NAMES.has(characterCode) || seen.has(characterCode)) {
       continue;
     }
 
@@ -2332,7 +2422,7 @@ function readMercenaries(data: Uint8Array, scope: EquipmentScope): CharacterMerc
 }
 
 function readCharacterMercenary(data: Uint8Array, characterCode: number, scope: EquipmentScope): CharacterMercenaryInfo {
-  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const characterName = CHR_CODE_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   const offset = getMercenaryOffset(data, characterCode, scope);
   const byteLength = scope === "field" ? 4 : 2;
 
@@ -2414,7 +2504,7 @@ function readCharacterAbilitiesList(data: Uint8Array, scope: EquipmentScope): Ch
 }
 
 function readCharacterAbilities(data: Uint8Array, characterCode: number, scope: EquipmentScope): CharacterAbilitiesInfo {
-  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const characterName = CHR_CODE_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   const baseOffset = getCharacterDataBaseOffset(data, characterCode, scope);
 
   if (baseOffset === null) {
@@ -2477,11 +2567,11 @@ function writeAbilityValue(data: Uint8Array, offset: number, value: number): voi
   if (!Number.isInteger(value) || !((value >= 1 && value <= 20) || value === 0xff)) {
     throw new Error("어빌리티 값은 1~20 또는 255여야 합니다.");
   }
-  data[offset] = value === 0xff ? 0xff : 0xff - value;
+  data[offset] = value === 0xff ? 0x00 : 0xff - value;
 }
 
 function readAbilityRawValue(raw: number): number {
-  return raw === 0xff ? 0xff : 0xff - raw;
+  return 0xff - raw;
 }
 
 function readCharacterStatsList(data: Uint8Array, scope: EquipmentScope): CharacterStatsInfo[] {
@@ -2504,7 +2594,7 @@ function readCharacterStatsList(data: Uint8Array, scope: EquipmentScope): Charac
 }
 
 function readCharacterStats(data: Uint8Array, characterCode: number, scope: EquipmentScope): CharacterStatsInfo {
-  const characterName = CHARACTER_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
+  const characterName = CHR_CODE_NAMES.get(characterCode) ?? `알 수 없음 (${characterCode})`;
   const baseOffset = getCharacterStatsBaseOffset(data, characterCode, scope);
 
   if (baseOffset === null) {
@@ -2679,3 +2769,4 @@ function assertRange(data: Uint8Array, offset: number, length: number): void {
     throw new Error(`세이브 파일이 예상보다 짧습니다. offset=0x${offset.toString(16)}`);
   }
 }
+
