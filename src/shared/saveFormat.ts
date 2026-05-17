@@ -1464,10 +1464,6 @@ export function applyParty(data: Uint8Array, episode: EpisodeKey, codes: number[
   for (let index = 0; index < codes.length; index += 1) {
     writeInverseUint32(data, target.offset + 4 + index * 4, codes[index]);
   }
-
-  for (let index = codes.length; index < PARTY_MEMBER_LIMIT; index += 1) {
-    writeInverseUint32(data, target.offset + 4 + index * 4, 0);
-  }
 }
 
 export function applySaveEdits(data: Uint8Array, edits: SaveEditRequest): void {
